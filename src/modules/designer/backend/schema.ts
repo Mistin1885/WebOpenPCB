@@ -226,6 +226,7 @@ export const bomOverrides = sqliteTable(
   {
     id: text("id").primaryKey(),
     designId: text("design_id").notNull(),
+    partId: text("part_id"),
     refdes: text("refdes").notNull(),
     manufacturer: text("manufacturer"),
     manufacturerPartNumber: text("manufacturer_part_number"),
@@ -240,7 +241,11 @@ export const bomOverrides = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => ({
-    designRefUq: uniqueIndex("designer_bom_overrides_design_ref_uq").on(
+    designPartUq: uniqueIndex("designer_bom_overrides_design_part_uq").on(
+      table.designId,
+      table.partId,
+    ),
+    designRefIdx: index("designer_bom_overrides_design_ref_idx").on(
       table.designId,
       table.refdes,
     ),

@@ -531,6 +531,153 @@ async function importFixtureComponent(
 }
 
 describe("designer PCB placements", () => {
+  test("keeps renamed references and BOM overrides in sync without moving the placement", async () => {
+    isolateTestDb("designer-pcb-reference-sync");
+    const { moduleRuntime, server } = await createRuntime();
+    const designerSdk = moduleRuntime
+      .getSdkRegistry()
+      .resolve<DesignerSDK>(MODULE_SDK_TOKENS.DESIGNER);
+
+    const componentId = await importFixtureComponent(server);
+    const design = await designerSdk.createDesign({ name: "Reference sync" });
+    const placed = await designerSdk.dispatchCommand(design.id, {
+      commandId: "cmd-reference-place",
+      sessionId: "reference-place-session",
+      aggregateId: design.id,
+      baseRevision: 0,
+      issuedAt: Date.now(),
+      command: {
+        type: "place_part",
+        componentId,
+        positionNm: { x: 0, y: 0 },
+      },
+    });
+    expect(placed.ok).toBe(true);
+
+    const initial = await designerSdk.getPcbProjection(design.id);
+    const initialPlacement = initial!.placements[0]!;
+    const moved = await designerSdk.dispatchCommand(design.id, {
+      commandId: "cmd-reference-move",
+      sessionId: "reference-layout-session",
+      aggregateId: design.id,
+      baseRevision: initial!.revision,
+      issuedAt: Date.now(),
+      command: {
+        type: "pcb_move_placement",
+        placementId: initialPlacement.id,
+        positionMm: { x: 18.5, y: 9.25 },
+      },
+    });
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) return;
+
+    const rotated = await designerSdk.dispatchCommand(design.id, {
+      commandId: "cmd-reference-rotate",
+      sessionId: "reference-layout-session",
+      aggregateId: design.id,
+      baseRevision: moved.revision,
+      issuedAt: Date.now(),
+      command: {
+        type: "pcb_rotate_placement",
+        placementId: initialPlacement.id,
+        rotationDeg: 90,
+      },
+    });
+    expect(rotated.ok).toBe(true);
+    if (!rotated.ok) return;
+
+    const flipped = await designerSdk.dispatchCommand(design.id, {
+      commandId: "cmd-reference-flip",
+      sessionId: "reference-layout-session",
+      aggregateId: design.id,
+      baseRevision: rotated.revision,
+      issuedAt: Date.now(),
+      command: {
+        type: "pcb_flip_placement",
+        placementId: initialPlacement.id,
+      },
+    });
+    expect(flipped.ok).toBe(true);
+    if (!flipped.ok) return;
+
+    const beforeRename = await designerSdk.getPcbProjection(design.id);
+    const preservedLayout = beforeRename!.placements[0]!;
+    const schematicBefore = await designerSdk.getSchematicProjection(design.id);
+    const part = schematicBefore!.parts[0]!;
+
+    const overrideResponse = await server.fetch(
+      new Request(
+        `http://localhost/api/modules/designer/designs/${design.id}/bom/refs/${encodeURIComponent(part.reference)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ notes: "keep with part", dnp: true }),
+        },
+      ),
+    );
+    expect(overrideResponse.status).toBe(200);
+
+    const renamedReference = `${part.reference}_RENAMED`;
+    const renamed = await designerSdk.dispatchCommand(design.id, {
+      commandId: "cmd-reference-rename",
+      sessionId: "reference-rename-session",
+      aggregateId: design.id,
+      baseRevision: beforeRename!.revision,
+      issuedAt: Date.now(),
+      command: {
+        type: "update_part_properties",
+        partId: part.id,
+        reference: renamedReference,
+      },
+    });
+    expect(renamed.ok).toBe(true);
+
+    const afterRename = await designerSdk.getPcbProjection(design.id);
+    const renamedPlacement = afterRename!.placements[0]!;
+    expect(renamedPlacement.reference).toBe(renamedReference);
+    expect({
+      id: renamedPlacement.id,
+      positionMm: renamedPlacement.positionMm,
+      rotationDeg: renamedPlacement.rotationDeg,
+      layer: renamedPlacement.layer,
+      mirrored: renamedPlacement.mirrored,
+    }).toEqual({
+      id: preservedLayout.id,
+      positionMm: preservedLayout.positionMm,
+      rotationDeg: preservedLayout.rotationDeg,
+      layer: preservedLayout.layer,
+      mirrored: preservedLayout.mirrored,
+    });
+    let bom = await designerSdk.getBomProjection(design.id);
+    expect(
+      bom?.rows.find((row) => row.refdesList === renamedReference)?.notes,
+    ).toBe("keep with part");
+
+    const undone = await designerSdk.undo(
+      design.id,
+      "reference-rename-session",
+    );
+    expect(undone.ok).toBe(true);
+    const afterUndo = await designerSdk.getPcbProjection(design.id);
+    expect(afterUndo!.placements[0]!.reference).toBe(part.reference);
+    bom = await designerSdk.getBomProjection(design.id);
+    expect(bom?.rows.find((row) => row.refdesList === part.reference)?.dnp).toBe(
+      true,
+    );
+
+    const redone = await designerSdk.redo(
+      design.id,
+      "reference-rename-session",
+    );
+    expect(redone.ok).toBe(true);
+    const afterRedo = await designerSdk.getPcbProjection(design.id);
+    expect(afterRedo!.placements[0]!.reference).toBe(renamedReference);
+    bom = await designerSdk.getBomProjection(design.id);
+    expect(
+      bom?.rows.find((row) => row.refdesList === renamedReference)?.dnp,
+    ).toBe(true);
+  });
+
   test("move + rotate placement with undo/redo", async () => {
     isolateTestDb("designer-pcb-placement");
     const { moduleRuntime, server } = await createRuntime();

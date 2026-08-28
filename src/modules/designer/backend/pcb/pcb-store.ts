@@ -1499,7 +1499,10 @@ export function syncPcbPlacementsFromSchematic(params: {
       const footprintChanged =
         JSON.stringify(existingPlacement.footprint) !==
         JSON.stringify(part.footprint);
-      if (footprintChanged) {
+      const metadataChanged =
+        existingPlacement.componentId !== part.componentId ||
+        existingPlacement.reference !== part.reference;
+      if (footprintChanged || metadataChanged) {
         const refreshed: PcbPlacedPart = {
           ...existingPlacement,
           componentId: part.componentId,

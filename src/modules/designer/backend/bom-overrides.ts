@@ -1,10 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type {
   BomOverride,
   BomOverridePatch,
 } from "../../../sdks/designer/types";
-import { bomOverrides } from "./schema";
+import { bomOverrides, schematicParts } from "./schema";
 
 type DbClient = BetterSQLite3Database<Record<string, unknown>>;
 
@@ -14,12 +14,25 @@ export function listBomOverrides(
   db: DbClient,
   designId: string,
 ): BomOverride[] {
+  const currentReferenceByPartId = new Map(
+    db
+      .select({ id: schematicParts.id, reference: schematicParts.reference })
+      .from(schematicParts)
+      .where(eq(schematicParts.designId, designId))
+      .all()
+      .map((part) => [part.id, part.reference]),
+  );
   return db
     .select()
     .from(bomOverrides)
     .where(eq(bomOverrides.designId, designId))
     .all()
-    .map(toDto);
+    .map((row) =>
+      toDto(
+        row,
+        (row.partId && currentReferenceByPartId.get(row.partId)) || row.refdes,
+      ),
+    );
 }
 
 export function upsertBomOverride(
@@ -29,14 +42,53 @@ export function upsertBomOverride(
   patch: BomOverridePatch,
   timestamp: string,
 ): BomOverride {
-  const existing = db
-    .select()
-    .from(bomOverrides)
-    .where(and(eq(bomOverrides.designId, designId), eq(bomOverrides.refdes, refdes)))
+  const part = db
+    .select({ id: schematicParts.id })
+    .from(schematicParts)
+    .where(
+      and(
+        eq(schematicParts.designId, designId),
+        eq(schematicParts.reference, refdes),
+      ),
+    )
     .get();
+  const existing = part
+    ? db
+        .select()
+        .from(bomOverrides)
+        .where(
+          and(
+            eq(bomOverrides.designId, designId),
+            eq(bomOverrides.partId, part.id),
+          ),
+        )
+        .get() ??
+      db
+        .select()
+        .from(bomOverrides)
+        .where(
+          and(
+            eq(bomOverrides.designId, designId),
+            eq(bomOverrides.refdes, refdes),
+            isNull(bomOverrides.partId),
+          ),
+        )
+        .get()
+    : db
+        .select()
+        .from(bomOverrides)
+        .where(
+          and(
+            eq(bomOverrides.designId, designId),
+            eq(bomOverrides.refdes, refdes),
+            isNull(bomOverrides.partId),
+          ),
+        )
+        .get();
   const next = {
     id: existing?.id ?? crypto.randomUUID(),
     designId,
+    partId: part?.id ?? existing?.partId ?? null,
     refdes,
     manufacturer:
       patch.manufacturer !== undefined ? normalizeString(patch.manufacturer) : existing?.manufacturer ?? null,
@@ -75,13 +127,13 @@ export function upsertBomOverride(
   } else {
     db.insert(bomOverrides).values(next).run();
   }
-  return toDto(next);
+  return toDto(next, refdes);
 }
 
-function toDto(row: BomOverrideRow): BomOverride {
+function toDto(row: BomOverrideRow, refdes = row.refdes): BomOverride {
   return {
     designId: row.designId,
-    refdes: row.refdes,
+    refdes,
     manufacturer: row.manufacturer,
     manufacturerPartNumber: row.manufacturerPartNumber,
     lcscPartNumber: row.lcscPartNumber,
