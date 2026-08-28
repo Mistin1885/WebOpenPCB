@@ -44,6 +44,23 @@ Beta builds are **not code-signed**, so macOS Gatekeeper and Windows SmartScreen
 the first time. [`electron/README-BETA-INSTALL.md`](electron/README-BETA-INSTALL.md) has the
 per-platform steps, including checksum verification.
 
+## Run with Docker Compose
+
+Docker runs the browser version of OpenPCB and keeps its database and imported assets in a named
+volume:
+
+```bash
+docker compose up --build -d
+```
+
+Open <http://127.0.0.1:3000>. Follow the logs with `docker compose logs -f`, and stop the app with
+`docker compose down`. Normal shutdown preserves the `openpcb-data` volume; use
+`docker compose down --volumes` only when you intentionally want to delete all OpenPCB data.
+
+The published port is deliberately bound to `127.0.0.1`. OpenPCB is a single-user application
+without an HTTP authentication layer, so do not change it to a public interface unless you add an
+authenticated reverse proxy and review the security model first.
+
 ## What it does
 
 **Schematic capture.** Place symbols, route wires on a Manhattan grid, add net labels and

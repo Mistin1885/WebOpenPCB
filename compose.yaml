@@ -1,0 +1,28 @@
+name: openpcb
+
+services:
+  openpcb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: openpcb:local
+    init: true
+    restart: unless-stopped
+    ports:
+      # Keep the unauthenticated API on the host loopback interface.
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      OPENPCB_DB_PATH: /data/openpcb.sqlite
+      OPENPCB_STATIC_DIR: /app/frontend-dist
+      OPENPCB_WORKSPACE_ROOT: /app/src
+      OPENPCB_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+    volumes:
+      - openpcb-data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  openpcb-data:

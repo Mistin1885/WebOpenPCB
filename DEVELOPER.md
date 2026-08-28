@@ -262,6 +262,22 @@ npm run dev
 # frontend → http://127.0.0.1:1420  (proxies /api and /ws → 3000)
 ```
 
+### Docker Compose (production browser build)
+
+```bash
+docker compose up --build -d
+# Open http://127.0.0.1:3000
+```
+
+The multi-stage image builds the Vite frontend and serves it from the Bun backend. SQLite and all
+file-backed user content live in the `openpcb-data` named volume at `/data`. Inspect startup with
+`docker compose logs -f`; stop with `docker compose down`. Removing the stack does not remove the
+volume unless `docker compose down --volumes` is used.
+
+The backend listens on `0.0.0.0` only inside the container so Docker can forward traffic. Compose
+publishes it exclusively on the host loopback address (`127.0.0.1:3000`) to preserve OpenPCB's
+single-user security boundary.
+
 ### Desktop mode
 
 ```bash
