@@ -2,28 +2,27 @@
 
 FROM oven/bun:1.3.5 AS bun-bin
 
-FROM oven/bun:1.3.0 AS corelib-bun-bin
-
 FROM node:22-bookworm-slim AS core-library
 
 ARG OPENPCB_CORELIB_REF="b1ec4e48a6a9ac89abc4a1c9b34ea941117f57f1"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=corelib-bun-bin /usr/local/bin/bun /usr/local/bin/bun
 RUN git init /core-library \
     && git -C /core-library remote add origin https://github.com/OpenPCB-app/CoreLibrary.git \
     && git -C /core-library fetch --depth 1 origin "${OPENPCB_CORELIB_REF}" \
     && git -C /core-library checkout --detach FETCH_HEAD \
     && test "$(git -C /core-library rev-parse HEAD)" = "${OPENPCB_CORELIB_REF}"
 WORKDIR /core-library
-RUN npm install
-# The upstream STEP-to-GLB converter crashes under Docker's virtualized CPU.
-# Keep all 231 schematic/footprint components; Docker builds omit only the
-# optional pre-generated 3D assets until upstream publishes a full release.
-RUN mv 3d /core-library-3d-source \
-    && mkdir 3d \
-    && bun run pack --version=0.1.1-docker.1 --channel=beta --no-step=true --out=/core-library-dist
+RUN npm install \
+    && npm install --no-save tsx@4.23.12
+# Bun/JSC intermittently aborts while repeatedly instantiating OCCT's large
+# WebAssembly module. Node/V8 completes the same CPU-only STEP tessellation
+# reliably. CoreLibrary currently uses Bun's import.meta.dir alias, so adapt
+# that one expression without changing the pinned upstream checkout.
+RUN sed -i 's/import\.meta\.dir/import.meta.dirname/' tools/lib.ts \
+    && OPCLIB_PACK_CONCURRENCY=1 node --import tsx tools/pack.ts \
+      --version=0.1.1-docker.1 --channel=beta --no-step=true --out=/core-library-dist
 
 FROM node:22-bookworm-slim AS build
 

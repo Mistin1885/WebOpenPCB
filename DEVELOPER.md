@@ -286,11 +286,13 @@ Compose reads `.env` for `OPENPCB_PORT`, `OPENPCB_ALLOWED_ORIGINS`, the pinned
 `docker compose build`. `host.docker.internal` is mapped through Docker's host gateway and built-in
 local-AI provider URLs are rewritten to it inside the container.
 
-The source CoreLibrary currently has 231 components but its native STEP-to-GLB build crashes under
-Docker's virtualized CPU. The Docker builder packages all symbols and footprints without the
-optional bundled 3D assets. The tagged `@openpcb/opclib-pack` dependency still has a 500-entry ZIP
-limit; the runtime layer applies the upstream 8192-entry constant so the 608-entry complete package
-can be read while retaining archive-size and uncompressed-size limits.
+The source CoreLibrary currently has 231 components and 139 STEP models. Its OpenCascade/WASM
+converter is CPU-only; GPU passthrough does not affect it. Repeated converter instantiation is
+unstable under Bun/JSC, so the Docker builder runs the pinned packer through Node/V8 with
+`OPCLIB_PACK_CONCURRENCY=1`. The resulting package includes all generated GLBs while excluding the
+larger source STEP files. The tagged `@openpcb/opclib-pack` dependency still has a 500-entry ZIP
+limit; the runtime layer applies the upstream 8192-entry constant so the 747-entry package can be
+read while retaining archive-size and uncompressed-size limits.
 
 Operational scripts:
 

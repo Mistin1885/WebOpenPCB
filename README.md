@@ -89,17 +89,17 @@ ignored by Git. Test a restore before relying on it as your only copy.
 
 ### Docker browser-mode differences
 
-The container includes the complete 231-component schematic and footprint library and supports
-Library **Place in design**. It is still the browser build, so Electron-only features such as native
-file dialogs, desktop protocol registration, the desktop updater and OS file reveal are replaced
-by browser inputs or documented Docker commands. Cloud login returns through an HTTP browser
-callback, and browser credentials are held in session storage rather than persistent local
-storage.
+The container includes the complete 231-component schematic and footprint library, all 139 bundled
+3D models, and supports Library **Place in design**. It is still the browser build, so Electron-only
+features such as native file dialogs, desktop protocol registration, the desktop updater and OS
+file reveal are replaced by browser inputs or documented Docker commands. Cloud login returns
+through an HTTP browser callback, and browser credentials are held in session storage rather than
+persistent local storage.
 
-The upstream CoreLibrary STEP-to-GLB packer currently crashes under Docker's virtualized CPU. The
-Docker image therefore omits the bundled library's pre-generated 3D models while retaining all 231
-symbols and footprints; user-imported STEP conversion remains available in the browser. MCP is
-intentionally not published by the Compose service.
+CoreLibrary's CPU-only OpenCascade/WebAssembly conversion runs under Node/V8 during the image
+build because Bun/JSC is unstable when repeatedly instantiating the converter. A GPU or NVIDIA
+Container Toolkit is not required. User-imported STEP conversion remains available in the browser.
+MCP is intentionally not published by the Compose service.
 
 ## What it does
 
