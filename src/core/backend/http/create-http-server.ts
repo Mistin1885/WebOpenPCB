@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import { gzipSync } from "node:zlib";
 import { DiagnosticsController } from "../controllers/diagnostics-controller";
 import { HealthController } from "../controllers/health-controller";
 import { ModuleRuntimeDiagnosticsController } from "../controllers/module-runtime-diagnostics-controller";
@@ -35,38 +36,71 @@ function resolveStaticDir(): string | null {
 }
 
 function contentTypeFor(pathname: string): string {
-  if (pathname.endsWith(".html")) return "text/html; charset=utf-8";
-  if (pathname.endsWith(".js")) return "text/javascript; charset=utf-8";
-  if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
-  if (pathname.endsWith(".json")) return "application/json; charset=utf-8";
-  if (pathname.endsWith(".svg")) return "image/svg+xml";
-  if (pathname.endsWith(".wasm")) return "application/wasm";
-  return "application/octet-stream";
+  switch (extname(pathname).toLowerCase()) {
+    case ".html": return "text/html; charset=utf-8";
+    case ".js":
+    case ".mjs": return "text/javascript; charset=utf-8";
+    case ".css": return "text/css; charset=utf-8";
+    case ".json":
+    case ".map": return "application/json; charset=utf-8";
+    case ".svg": return "image/svg+xml";
+    case ".wasm": return "application/wasm";
+    case ".png": return "image/png";
+    case ".jpg":
+    case ".jpeg": return "image/jpeg";
+    case ".webp": return "image/webp";
+    case ".woff2": return "font/woff2";
+    default: return "application/octet-stream";
+  }
 }
 
 async function serveStaticFile(
   staticDir: string,
   pathname: string,
+  req: Request,
 ): Promise<Response | null> {
-  const filePath = join(staticDir, pathname);
-  if (!filePath.startsWith(staticDir)) {
+  const root = resolve(staticDir);
+  const filePath = resolve(root, `.${pathname}`);
+  if (filePath !== root && !filePath.startsWith(`${root}${sep}`)) {
     return null;
   }
   try {
     const file = await readFile(filePath);
-    return new Response(file, {
-      headers: { "content-type": contentTypeFor(filePath) },
+    const contentType = contentTypeFor(filePath);
+    const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(
+      req.headers.get("accept-encoding") ?? "",
+    );
+    const compressible =
+      contentType.startsWith("text/") ||
+      contentType.startsWith("application/json") ||
+      contentType === "application/wasm" ||
+      contentType === "image/svg+xml";
+    const shouldCompress = acceptsGzip && compressible && file.byteLength >= 1024;
+    const body = shouldCompress ? gzipSync(file) : file;
+    const headers = new Headers({
+      "content-type": contentType,
+      "cache-control": pathname.startsWith("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : "no-cache",
     });
+    if (shouldCompress) {
+      headers.set("content-encoding", "gzip");
+      headers.set("vary", "Accept-Encoding");
+    }
+    return new Response(req.method === "HEAD" ? null : body, { headers });
   } catch {
     return null;
   }
 }
 
-async function serveSpaFallback(staticDir: string): Promise<Response> {
+async function serveSpaFallback(staticDir: string, method: string): Promise<Response> {
   const indexPath = join(staticDir, "index.html");
   const file = await readFile(indexPath);
-  return new Response(file, {
-    headers: { "content-type": "text/html" },
+  return new Response(method === "HEAD" ? null : file, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache",
+    },
   });
 }
 
@@ -212,13 +246,13 @@ export function createHttpServer(config: HttpServerConfig): RuntimeServer {
       // Serve static files first for non-API routes when in packaged mode
       if (
         staticDir &&
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         !url.pathname.startsWith("/api/") &&
         !url.pathname.startsWith("/ws/")
       ) {
-        const staticResponse = await serveStaticFile(staticDir, url.pathname);
+        const staticResponse = await serveStaticFile(staticDir, url.pathname, req);
         if (staticResponse) return staticResponse;
-        return serveSpaFallback(staticDir);
+        return serveSpaFallback(staticDir, req.method);
       }
 
       if (

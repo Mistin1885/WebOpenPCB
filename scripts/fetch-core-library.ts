@@ -24,9 +24,9 @@
  *   OPENPCB_CORELIB_TAG=v1.2.3       same as --tag
  *   OPENPCB_CORELIB_MIN_COMPONENTS=N override the default ≥10 guard
  *
- * Requires `gh` CLI in PATH and authenticated (or anonymous for public repos).
+ * Public repositories need no credentials. Set GITHUB_TOKEN or GH_TOKEN for
+ * private repositories or to avoid anonymous GitHub API rate limits.
  */
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -64,82 +64,100 @@ function parseTagArg(): string {
   return process.env.OPENPCB_CORELIB_TAG ?? "";
 }
 
-function run(
-  cmd: string,
-  args: string[],
-  opts: { cwd?: string; allowFail?: boolean } = {},
-): { stdout: string; status: number | null } {
-  const r = spawnSync(cmd, args, {
-    stdio: ["ignore", "pipe", "inherit"],
-    cwd: opts.cwd,
-  });
-  if (r.status !== 0 && !opts.allowFail) {
-    throw new Error(`${cmd} ${args.join(" ")} exited with status ${r.status}`);
-  }
-  return { stdout: r.stdout?.toString() ?? "", status: r.status };
-}
-
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function ghAvailable(): boolean {
-  return spawnSync("gh", ["--version"], { stdio: "ignore" }).status === 0;
+interface GitHubReleaseAsset {
+  name: string;
+  browser_download_url: string;
 }
 
-function resolveLatestStableTag(): string {
-  // Avoid passing a `--jq` filter through spawnSync (Windows cmd.exe mangles
-  // the brackets). Fetch full JSON and filter in JS.
-  const r = run("gh", ["api", `repos/${REPO}/releases`]);
-  let releases: Array<{ tag_name: string; prerelease: boolean }>;
-  try {
-    releases = JSON.parse(r.stdout) as Array<{
-      tag_name: string;
-      prerelease: boolean;
-    }>;
-  } catch (err) {
+interface GitHubRelease {
+  tag_name: string;
+  prerelease: boolean;
+  draft: boolean;
+  assets: GitHubReleaseAsset[];
+}
+
+function githubHeaders(): Headers {
+  const headers = new Headers({
+    Accept: "application/vnd.github+json",
+    "User-Agent": "OpenPCB-CoreLibrary-fetch",
+    "X-GitHub-Api-Version": "2022-11-28",
+  });
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return headers;
+}
+
+async function githubJson<T>(pathValue: string): Promise<T> {
+  const response = await fetch(`https://api.github.com${pathValue}`, {
+    headers: githubHeaders(),
+  });
+  if (!response.ok) {
     throw new Error(
-      `failed to parse gh releases response: ${(err as Error).message}`,
+      `GitHub API ${pathValue} failed: HTTP ${response.status} ${response.statusText}`,
     );
   }
-  const stable = releases.find((r) => r.prerelease === false);
+  return (await response.json()) as T;
+}
+
+async function resolveRelease(requestedTag: string): Promise<GitHubRelease> {
+  if (requestedTag) {
+    return githubJson<GitHubRelease>(
+      `/repos/${REPO}/releases/tags/${encodeURIComponent(requestedTag)}`,
+    );
+  }
+  const releases = await githubJson<GitHubRelease[]>(
+    `/repos/${REPO}/releases?per_page=100`,
+  );
+  const stable = releases.find(
+    (release) => !release.draft && !release.prerelease,
+  );
   if (!stable) {
     throw new Error(
       `no stable (non-prerelease) releases found on ${REPO}. Use --tag to pin or publish a stable release first.`,
     );
   }
-  return stable.tag_name;
+  return stable;
 }
 
-if (!ghAvailable()) {
-  console.error(
-    "[corelib:fetch] gh CLI not found in PATH. Install https://cli.github.com/ or set OPENPCB_SKIP_CORELIB_FETCH=1.",
+async function downloadReleaseAssets(
+  release: GitHubRelease,
+  destination: string,
+): Promise<void> {
+  const selected = release.assets.filter(
+    (asset) =>
+      asset.name.endsWith(".opclib") ||
+      asset.name === "SHA256SUMS" ||
+      asset.name === "openpcb-core.pub",
   );
-  process.exit(1);
+  for (const asset of selected) {
+    const response = await fetch(asset.browser_download_url, {
+      headers: githubHeaders(),
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      throw new Error(
+        `download ${asset.name} failed: HTTP ${response.status} ${response.statusText}`,
+      );
+    }
+    writeFileSync(
+      path.join(destination, asset.name),
+      new Uint8Array(await response.arrayBuffer()),
+    );
+  }
 }
 
 const requestedTag = parseTagArg();
-const tag = requestedTag || resolveLatestStableTag();
+const release = await resolveRelease(requestedTag);
+const tag = release.tag_name;
 const tmp = mkdtempSync(path.join(os.tmpdir(), "openpcb-corelib-"));
 
 try {
   console.error(`[corelib:fetch] tag=${tag} repo=${REPO} tmp=${tmp}`);
-  run("gh", [
-    "release",
-    "download",
-    tag,
-    "--repo",
-    REPO,
-    "--pattern",
-    "*.opclib",
-    "--pattern",
-    "SHA256SUMS",
-    "--pattern",
-    "openpcb-core.pub",
-    "--dir",
-    tmp,
-    "--clobber",
-  ]);
+  await downloadReleaseAssets(release, tmp);
 
   const files = readdirSync(tmp);
   const opclib = files.find((f) => f.endsWith(".opclib"));
@@ -186,9 +204,10 @@ try {
       trustedKeys.set(keyId, readFileSync(path.join(KEYS_DIR, f)));
     }
   }
-  // If release publishes openpcb-core.pub, accept only if its PEM contents
-  // match a committed key. Normalize line endings (Windows checkouts can
-  // convert LF → CRLF on the committed file, breaking byte comparison).
+  // If a signed release publishes openpcb-core.pub, accept it only when its
+  // PEM contents match a committed key. Older unsigned releases contain the
+  // retired test key; it is not used to authenticate an unsigned manifest.
+  // Normalize line endings because Windows checkouts can convert LF → CRLF.
   const releasedPub = files.find((f) => f === "openpcb-core.pub");
   if (releasedPub) {
     const releasedKeyText = readFileSync(path.join(tmp, releasedPub), "utf8")
@@ -205,9 +224,14 @@ try {
         break;
       }
     }
-    if (!matched) {
+    if (!matched && manifest.signature) {
       throw new Error(
         "released openpcb-core.pub does not match any trusted key in resources/keys/ — refusing to trust",
+      );
+    }
+    if (!matched) {
+      console.error(
+        "[corelib:fetch] WARNING: ignoring obsolete public-key asset on unsigned release",
       );
     }
   }

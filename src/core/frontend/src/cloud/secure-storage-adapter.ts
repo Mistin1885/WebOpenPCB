@@ -21,7 +21,7 @@ function warnFallback(): void {
   if (warnedAboutFallback) return;
   warnedAboutFallback = true;
   console.warn(
-    "[secure-storage] electronAPI.secureStorage not available — falling back to localStorage (dev/browser mode only)",
+    "[secure-storage] electronAPI.secureStorage not available — using sessionStorage so cloud credentials are cleared when this browser session ends",
   );
 }
 
@@ -35,15 +35,15 @@ function makeElectronAdapter(
   };
 }
 
-function makeLocalStorageAdapter(): SupportedStorage {
+function makeSessionStorageAdapter(): SupportedStorage {
   return {
-    getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
+    getItem: (key: string) => Promise.resolve(sessionStorage.getItem(key)),
     setItem: (key: string, value: string) => {
-      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
       return Promise.resolve();
     },
     removeItem: (key: string) => {
-      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
       return Promise.resolve();
     },
   };
@@ -58,5 +58,5 @@ export function createCloudStorage(): SupportedStorage | undefined {
   }
 
   warnFallback();
-  return makeLocalStorageAdapter();
+  return makeSessionStorageAdapter();
 }

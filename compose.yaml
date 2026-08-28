@@ -5,12 +5,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        OPENPCB_CORELIB_REF: ${OPENPCB_CORELIB_REF:-b1ec4e48a6a9ac89abc4a1c9b34ea941117f57f1}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_CLOUD_API_URL: ${VITE_CLOUD_API_URL:-}
+        VITE_CLOUD_WEB_URL: ${VITE_CLOUD_WEB_URL:-}
+        VITE_CLOUD_COPILOT_URL: ${VITE_CLOUD_COPILOT_URL:-}
     image: openpcb:local
     init: true
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Keep the unauthenticated API on the host loopback interface.
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${OPENPCB_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -18,7 +27,10 @@ services:
       OPENPCB_DB_PATH: /data/openpcb.sqlite
       OPENPCB_STATIC_DIR: /app/frontend-dist
       OPENPCB_WORKSPACE_ROOT: /app/src
-      OPENPCB_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      OPENPCB_ALLOWED_ORIGINS: ${OPENPCB_ALLOWED_ORIGINS:-http://127.0.0.1:${OPENPCB_PORT:-3000},http://localhost:${OPENPCB_PORT:-3000}}
+      OPENPCB_LOCALHOST_HOST: host.docker.internal
+      # Docker is user-operated, so command dataset capture is opt-in here.
+      OPENPCB_FEATURE_DATASET_CAPTURE: ${OPENPCB_FEATURE_DATASET_CAPTURE:-0}
     volumes:
       - openpcb-data:/data
     security_opt:

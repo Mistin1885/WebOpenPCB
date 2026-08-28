@@ -294,6 +294,7 @@ function DesignerSpaceInner({
   moduleId,
   backendURL,
   designId,
+  params,
 }: ModuleSpaceProps): ReactElement {
   const { addToast } = useToast();
   const { session, user, enabled: cloudEnabled } = useAuth();
@@ -489,6 +490,7 @@ function DesignerSpaceInner({
   );
   const [threeDSlot, setThreeDSlot] = useState<HTMLDivElement | null>(null);
   const canvasRef = useRef<SchematicCanvasHandle | null>(null);
+  const handledRoutePlacementRef = useRef<string | null>(null);
   const viewportRef = useRef<Map<string, ViewportState>>(new Map());
   const designsLoadedRef = useRef(false);
   const reconciledRef = useRef(false);
@@ -522,7 +524,7 @@ function DesignerSpaceInner({
     }
 
     if (tabs.activeDesignId && knownIds.has(tabs.activeDesignId)) {
-      navigateToModule("designer", tabs.activeDesignId);
+      navigateToModule("designer", tabs.activeDesignId, params);
       return;
     }
 
@@ -530,13 +532,14 @@ function DesignerSpaceInner({
       const first = tabs.openDesignIds.find((id) => knownIds.has(id));
       if (first) {
         setActiveTab(first);
-        navigateToModule("designer", first);
+        navigateToModule("designer", first, params);
       }
     }
   }, [
     designId,
     navigateToModule,
     openTab,
+    params,
     setActiveTab,
     state.designs,
     state.loadingDesigns,
@@ -686,6 +689,51 @@ function DesignerSpaceInner({
     },
     [actions.resolvePlacement, addToast],
   );
+
+  useEffect(() => {
+    const componentId = params?.placeComponentId;
+    if (!componentId) {
+      handledRoutePlacementRef.current = null;
+      return;
+    }
+    if (handledRoutePlacementRef.current === componentId) {
+      return;
+    }
+    if (!state.selectedDesignId || !state.projection) return;
+    if (state.activeView !== "schem") {
+      actions.setActiveView("schem");
+      return;
+    }
+
+    handledRoutePlacementRef.current = componentId;
+    void actions
+      .resolvePlacement(componentId)
+      .then((detail) => {
+        if (!canvasRef.current) {
+          throw new Error("Schematic canvas is not ready");
+        }
+        canvasRef.current.armComponentPlacement(detail);
+        writePersistedRecents(componentId);
+        navigateToModule("designer", state.selectedDesignId ?? undefined);
+      })
+      .catch((error) => {
+        addToast(
+          error instanceof Error
+            ? error.message
+            : "Failed to place library component",
+          "error",
+        );
+        navigateToModule("designer", state.selectedDesignId ?? undefined);
+      });
+  }, [
+    actions,
+    addToast,
+    navigateToModule,
+    params?.placeComponentId,
+    state.activeView,
+    state.projection,
+    state.selectedDesignId,
+  ]);
 
   const searchPaletteComponents = useCallback(
     (q: string, tags: readonly string[] = []) =>

@@ -33,7 +33,8 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       current.kind === "module" &&
       current.moduleId === moduleId &&
       current.designId === designId &&
-      !params
+      !params &&
+      !current.params
     ) {
       return;
     }

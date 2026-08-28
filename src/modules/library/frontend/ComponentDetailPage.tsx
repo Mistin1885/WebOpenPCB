@@ -57,6 +57,8 @@ export function ComponentDetailPage({
   onBack,
   onCloned,
   onUpdated,
+  onPlaceInDesign,
+  placeInDesignDisabledMessage,
   modelRefreshToken: externalModelRefreshToken = 0,
   refreshToken = 0,
 }: {
@@ -66,6 +68,8 @@ export function ComponentDetailPage({
   onBack: () => void;
   onCloned?: (newComponentId: string) => void;
   onUpdated?: (component: LibraryComponent) => void;
+  onPlaceInDesign?: () => void;
+  placeInDesignDisabledMessage?: string;
   modelRefreshToken?: number;
   refreshToken?: number;
 }): ReactElement {
@@ -401,9 +405,10 @@ export function ComponentDetailPage({
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              disabled
-              title="Open a design to place"
-              className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-500 opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+              disabled={!onPlaceInDesign}
+              onClick={onPlaceInDesign}
+              title={placeInDesignDisabledMessage ?? "Place in active design"}
+              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:text-slate-400"
             >
               <Plus className="h-4 w-4" />
               Place in design

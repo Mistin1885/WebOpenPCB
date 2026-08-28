@@ -269,7 +269,9 @@ docker compose up --build -d
 # Open http://127.0.0.1:3000
 ```
 
-The multi-stage image builds the Vite frontend and serves it from the Bun backend. SQLite and all
+The multi-stage image builds a pinned CoreLibrary source revision, builds the Vite frontend, prunes
+development and Electron dependencies, and serves static files from the Bun backend with correct
+MIME types, HEAD support, immutable hashed-asset caching and gzip compression. SQLite and all
 file-backed user content live in the `openpcb-data` named volume at `/data`. Inspect startup with
 `docker compose logs -f`; stop with `docker compose down`. Removing the stack does not remove the
 volume unless `docker compose down --volumes` is used.
@@ -277,6 +279,30 @@ volume unless `docker compose down --volumes` is used.
 The backend listens on `0.0.0.0` only inside the container so Docker can forward traffic. Compose
 publishes it exclusively on the host loopback address (`127.0.0.1:3000`) to preserve OpenPCB's
 single-user security boundary.
+
+Compose reads `.env` for `OPENPCB_PORT`, `OPENPCB_ALLOWED_ORIGINS`, the pinned
+`OPENPCB_CORELIB_REF`, optional Cloud `VITE_*` build arguments and the opt-in
+`OPENPCB_FEATURE_DATASET_CAPTURE`. Vite variables are build-time values, so changing them requires
+`docker compose build`. `host.docker.internal` is mapped through Docker's host gateway and built-in
+local-AI provider URLs are rewritten to it inside the container.
+
+The source CoreLibrary currently has 231 components but its native STEP-to-GLB build crashes under
+Docker's virtualized CPU. The Docker builder packages all symbols and footprints without the
+optional bundled 3D assets. The tagged `@openpcb/opclib-pack` dependency still has a 500-entry ZIP
+limit; the runtime layer applies the upstream 8192-entry constant so the 608-entry complete package
+can be read while retaining archive-size and uncompressed-size limits.
+
+Operational scripts:
+
+```bash
+scripts/docker-backup.sh [directory]
+scripts/docker-restore.sh <backup.tar.gz>
+scripts/docker-update.sh
+```
+
+Backup and restore stop the service for SQLite consistency. Restore first creates a recovery
+archive under `backups/pre-restore/`. The update script takes a backup before `build --pull` and
+restart. Compose does not expose MCP; browser callbacks are used for Cloud PKCE login.
 
 ### Desktop mode
 

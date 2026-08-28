@@ -61,6 +61,21 @@ function apiKeyPreview(apiKey: string | null): string | null {
   return `${apiKey.slice(0, 4)}••••${apiKey.slice(-4)}`;
 }
 
+function containerAccessibleBaseUrl(baseUrl: string): string {
+  const replacement = process.env.OPENPCB_LOCALHOST_HOST?.trim();
+  if (!replacement) return baseUrl;
+  try {
+    const url = new URL(baseUrl);
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+      return baseUrl;
+    }
+    url.hostname = replacement;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return baseUrl;
+  }
+}
+
 function rowToCapabilities(
   row: Record<string, unknown> | undefined,
 ): AiProviderCapabilities | null {
@@ -134,19 +149,33 @@ export class ProviderStore {
       if (!SEEDED_BUILTIN_KINDS.includes(preset.kind)) continue;
       const presetId = preset.kind; // stable id == kind for builtins
       const existing = this.rawSql(
-        "SELECT id FROM assistant_provider_config WHERE id=?",
+        "SELECT id, base_url, is_builtin FROM assistant_provider_config WHERE id=?",
         [presetId],
       )[0];
-      if (existing) continue;
       const env = CLOUD_ENV[preset.kind];
       // Cloud provider presets (OpenAI / OpenRouter) are gated dev-only; local
       // providers (LM Studio / oMLX / Ollama) always seed. Skip only the
       // cloud-backed presets when the flag is off.
       if (env && !isFeatureEnabled("cloud.assistantProviders")) continue;
       const apiKey = env ? (process.env[env.key] ?? null) : null;
-      const baseUrl = env
+      const configuredBaseUrl = env
         ? (process.env[env.base] ?? preset.defaultBaseUrl)
         : preset.defaultBaseUrl;
+      const baseUrl = containerAccessibleBaseUrl(configuredBaseUrl);
+      if (existing) {
+        const currentBaseUrl = String(existing.base_url ?? "");
+        if (
+          bool(existing.is_builtin) &&
+          currentBaseUrl === preset.defaultBaseUrl &&
+          baseUrl !== currentBaseUrl
+        ) {
+          this.rawSql(
+            "UPDATE assistant_provider_config SET base_url=?, updated_at=? WHERE id=?",
+            [baseUrl, timestamp, presetId],
+          );
+        }
+        continue;
+      }
       const defaultModel = env
         ? (process.env[env.model] ?? preset.defaultModel)
         : preset.defaultModel;

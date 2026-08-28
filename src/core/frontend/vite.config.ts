@@ -11,8 +11,16 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const require = createRequire(import.meta.url);
 const wasm = require("vite-plugin-wasm") as () => Plugin;
 const topLevelAwait = require("vite-plugin-top-level-await") as () => Plugin;
+const rootPackage = require(path.resolve(repoRoot, "package.json")) as {
+  version: string;
+};
 
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_OPENPCB_VERSION": JSON.stringify(
+      process.env.VITE_OPENPCB_VERSION ?? rootPackage.version,
+    ),
+  },
   plugins: [react(), tailwind(), wasm(), topLevelAwait()],
   optimizeDeps: {
     exclude: ["occt-import-js"],

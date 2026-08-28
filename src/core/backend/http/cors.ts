@@ -91,7 +91,17 @@ export function withCorsHeaders(
 ): Response {
   const merged = new Headers(response.headers);
   for (const [key, value] of Object.entries(headers)) {
-    merged.set(key, value);
+    if (key.toLowerCase() === "vary" && merged.has("vary")) {
+      const values = new Set(
+        `${merged.get("vary")},${value}`
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+      );
+      merged.set("vary", [...values].join(", "));
+    } else {
+      merged.set(key, value);
+    }
   }
   return new Response(response.body, {
     status: response.status,

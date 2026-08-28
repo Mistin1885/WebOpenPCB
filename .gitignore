@@ -47,6 +47,7 @@ src/core/backend/dev-data/
 *.sqlite-shm
 *.sqlite-wal
 .data
+backups/
 .sisyphus/
 
 # Claude Code / agent scratch outside repo source

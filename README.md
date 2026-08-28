@@ -47,9 +47,10 @@ per-platform steps, including checksum verification.
 ## Run with Docker Compose
 
 Docker runs the browser version of OpenPCB and keeps its database and imported assets in a named
-volume:
+volume. Copy the optional settings file, then build and start it:
 
 ```bash
+cp .env.example .env # optional; edit only the values you need
 docker compose up --build -d
 ```
 
@@ -60,6 +61,45 @@ Open <http://127.0.0.1:3000>. Follow the logs with `docker compose logs -f`, and
 The published port is deliberately bound to `127.0.0.1`. OpenPCB is a single-user application
 without an HTTP authentication layer, so do not change it to a public interface unless you add an
 authenticated reverse proxy and review the security model first.
+
+Useful Docker settings in `.env`:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENPCB_PORT=3000` | Host port; the container remains on port 3000 |
+| `OPENPCB_ALLOWED_ORIGINS=...` | Comma-separated browser origins; defaults follow `OPENPCB_PORT` |
+| `OPENPCB_CORELIB_REF=...` | Pinned CoreLibrary source revision used by the image build |
+| `OPENPCB_FEATURE_DATASET_CAPTURE=0` | Opt in to production command-dataset capture by setting `1` |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_CLOUD_*` | Optional Cloud configuration, compiled into the frontend at build time |
+
+Ollama and LM Studio defaults are automatically rewritten to
+`host.docker.internal`, so a provider running on the Docker host remains reachable. Rebuild the
+image after changing any `VITE_*` or CoreLibrary build setting.
+
+### Docker backup and upgrades
+
+```bash
+scripts/docker-backup.sh                 # writes backups/openpcb-<timestamp>.tar.gz
+scripts/docker-restore.sh backups/<file> # makes a pre-restore backup, then restores
+scripts/docker-update.sh                 # backup, rebuild with --pull, restart
+```
+
+The backup scripts briefly stop the app to produce a consistent copy of `/data`. Backups are
+ignored by Git. Test a restore before relying on it as your only copy.
+
+### Docker browser-mode differences
+
+The container includes the complete 231-component schematic and footprint library and supports
+Library **Place in design**. It is still the browser build, so Electron-only features such as native
+file dialogs, desktop protocol registration, the desktop updater and OS file reveal are replaced
+by browser inputs or documented Docker commands. Cloud login returns through an HTTP browser
+callback, and browser credentials are held in session storage rather than persistent local
+storage.
+
+The upstream CoreLibrary STEP-to-GLB packer currently crashes under Docker's virtualized CPU. The
+Docker image therefore omits the bundled library's pre-generated 3D models while retaining all 231
+symbols and footprints; user-imported STEP conversion remains available in the browser. MCP is
+intentionally not published by the Compose service.
 
 ## What it does
 

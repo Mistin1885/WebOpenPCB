@@ -38,6 +38,27 @@ interface AuthContextValue {
   refresh: () => Promise<Session | null>;
 }
 
+const WEB_PKCE_STORAGE_KEY = "openpcb:cloud-login-pkce";
+
+interface PendingPkce {
+  verifier: string;
+  state: string;
+}
+
+function readPendingPkce(): PendingPkce | null {
+  try {
+    const raw = window.sessionStorage.getItem(WEB_PKCE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingPkce>;
+    if (typeof parsed.verifier !== "string" || typeof parsed.state !== "string") {
+      return null;
+    }
+    return { verifier: parsed.verifier, state: parsed.state };
+  } catch {
+    return null;
+  }
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -119,15 +140,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             window.dispatchEvent(
               new CustomEvent("openpcb:invite", { detail: { token } }),
             );
-        } else if (url.host === "auth-callback") {
+        } else if (
+          url.host === "auth-callback" ||
+          url.pathname === "/auth/callback"
+        ) {
           const code = url.searchParams.get("code");
           const returnedState = url.searchParams.get("state");
-          const pending = pkceRef.current;
+          const pending = pkceRef.current ?? readPendingPkce();
           // Ignore callbacks we didn't initiate or whose state doesn't match
           // (CSRF / cross-session guard). Clear immediately — single use.
           if (!code || !pending || returnedState !== pending.state) return;
           pkceRef.current = null;
-          void completeCloudLogin(code, pending.verifier);
+          window.sessionStorage.removeItem(WEB_PKCE_STORAGE_KEY);
+          void completeCloudLogin(code, pending.verifier).finally(() => {
+            if (url.pathname === "/auth/callback") {
+              window.history.replaceState({}, "", "/");
+            }
+          });
         }
       } catch {
         /* ignore malformed */
@@ -135,6 +164,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     api.onDeepLink(handleUrl);
     api.flushPendingDeepLink?.().then((u) => u && handleUrl(u));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb]);
+
+  // Browser/Docker callback: the cloud dashboard redirects the same tab back
+  // to /auth/callback, so there is no Electron protocol bridge involved.
+  useEffect(() => {
+    if (typeof window === "undefined" || window.electronAPI) return;
+    if (window.location.pathname !== "/auth/callback") return;
+    const code = new URLSearchParams(window.location.search).get("code");
+    const state = new URLSearchParams(window.location.search).get("state");
+    const pending = readPendingPkce();
+    if (!code || !state || !pending || pending.state !== state) {
+      setLoginError("Cloud login callback was invalid or expired.");
+      return;
+    }
+    window.sessionStorage.removeItem(WEB_PKCE_STORAGE_KEY);
+    void completeCloudLogin(code, pending.verifier)
+      .then(() => window.history.replaceState({}, "", "/"))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb]);
 
@@ -181,16 +229,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoginError(null);
     const { verifier, challenge, state } = await createPkcePair();
     pkceRef.current = { verifier, state };
-    const target = `${webUrl.replace(/\/$/, "")}/desktop-auth?challenge=${encodeURIComponent(
-      challenge,
-    )}&state=${encodeURIComponent(state)}`;
+    const targetUrl = new URL(`${webUrl.replace(/\/$/, "")}/desktop-auth`);
+    targetUrl.searchParams.set("challenge", challenge);
+    targetUrl.searchParams.set("state", state);
     const api = (
       window as unknown as {
         electronAPI?: { openExternal?: (url: string) => Promise<void> };
       }
     ).electronAPI;
-    if (api?.openExternal) await api.openExternal(target);
-    else window.open(target, "_blank", "noopener,noreferrer");
+    if (api?.openExternal) {
+      await api.openExternal(targetUrl.toString());
+    } else {
+      window.sessionStorage.setItem(
+        WEB_PKCE_STORAGE_KEY,
+        JSON.stringify({ verifier, state }),
+      );
+      targetUrl.searchParams.set(
+        "return_url",
+        `${window.location.origin}/auth/callback`,
+      );
+      window.location.assign(targetUrl.toString());
+    }
   }, [sb]);
 
   const signOut = useCallback(async () => {

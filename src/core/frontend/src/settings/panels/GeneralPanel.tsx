@@ -63,7 +63,8 @@ function UpdatesSection() {
     return (
       <Section title="Updates">
         <DesktopOnlyNote>
-          Updates are managed by the OpenPCB desktop app.
+          Docker updates are managed with `docker compose build --pull` followed
+          by `docker compose up -d`. Your named data volume is preserved.
         </DesktopOnlyNote>
       </Section>
     );
@@ -168,7 +169,8 @@ function FilesSection() {
     return (
       <Section title="Files & logs">
         <DesktopOnlyNote>
-          Local file locations are available in the desktop app.
+          Docker logs are available with `docker compose logs -f`; application
+          data is stored in the `openpcb-data` named volume.
         </DesktopOnlyNote>
       </Section>
     );

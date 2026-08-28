@@ -105,7 +105,8 @@ export function AboutPanel() {
       .catch(() => setVersions(null));
   }, []);
 
-  const version = versions?.app ?? null;
+  const webVersion = import.meta.env.VITE_OPENPCB_VERSION as string | undefined;
+  const version = versions?.app ?? webVersion ?? null;
   const channel = version?.includes("beta")
     ? "beta"
     : version?.includes("alpha")
@@ -151,7 +152,7 @@ export function AboutPanel() {
             {TAGLINE}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-500">
-            {version ? `Version ${version}` : "Development build (browser)"}
+            {version ? `Version ${version}` : "Unknown version"}
           </p>
         </div>
       </div>

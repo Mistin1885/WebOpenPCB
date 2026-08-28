@@ -206,6 +206,9 @@ export function LibrarySpace({
     null,
   );
   const navRoute = useNavigationStore((state) => state.currentRoute);
+  const navigateToModule = useNavigationStore(
+    (state) => state.navigateToModule,
+  );
   useEffect(() => {
     if (navRoute.kind !== "module") return;
     if (navRoute.moduleId !== moduleId) return;
@@ -546,6 +549,11 @@ export function LibrarySpace({
           modelRefreshToken={detailModelRefreshToken}
           refreshToken={refreshTick}
           onBack={() => setDetailComponentId(null)}
+          onPlaceInDesign={() =>
+            navigateToModule("designer", undefined, {
+              placeComponentId: detailComponentId,
+            })
+          }
           onCloned={(newId) => {
             setRefreshTick((value) => value + 1);
             setDetailComponentId(newId);
