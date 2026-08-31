@@ -46,6 +46,8 @@ const DEFAULT_VIEW_STATE: PcbViewState = {
   perLayerOpacity: {},
   layerPreset: "custom",
   ratsnestVisible: true,
+  gridVisible: true,
+  gridSnapEnabled: true,
   alignmentGuidesVisible: true,
   drcIgnoredRuleClasses: [],
   drcWaivedViolationIds: [],
@@ -118,6 +120,10 @@ interface PcbViewStoreActions {
   cycleDisplayMode(): void;
   setRatsnestVisible(visible: boolean): void;
   toggleRatsnestVisible(): void;
+  setGridVisible(visible: boolean): void;
+  toggleGridVisible(): void;
+  setGridSnapEnabled(enabled: boolean): void;
+  toggleGridSnapEnabled(): void;
   setAlignmentGuidesVisible(visible: boolean): void;
   toggleAlignmentGuidesVisible(): void;
   setCopperFillLayers(layers: ReadonlyArray<PcbCopperLayerId>): void;
@@ -294,6 +300,28 @@ export const usePcbViewStore = create<Store>((set, get) => ({
 
   toggleRatsnestVisible() {
     get().setRatsnestVisible(!get().viewState.ratsnestVisible);
+  },
+
+  setGridVisible(visible) {
+    if ((get().viewState.gridVisible ?? true) === visible) return;
+    set((s) => ({ viewState: { ...s.viewState, gridVisible: visible } }));
+    persistPatch({ gridVisible: visible });
+  },
+
+  toggleGridVisible() {
+    get().setGridVisible(!(get().viewState.gridVisible ?? true));
+  },
+
+  setGridSnapEnabled(enabled) {
+    if ((get().viewState.gridSnapEnabled ?? true) === enabled) return;
+    set((s) => ({
+      viewState: { ...s.viewState, gridSnapEnabled: enabled },
+    }));
+    persistPatch({ gridSnapEnabled: enabled });
+  },
+
+  toggleGridSnapEnabled() {
+    get().setGridSnapEnabled(!(get().viewState.gridSnapEnabled ?? true));
   },
 
   setAlignmentGuidesVisible(visible) {

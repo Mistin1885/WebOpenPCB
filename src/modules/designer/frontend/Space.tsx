@@ -1230,7 +1230,6 @@ function DesignerSpaceInner({
                   backendURL={backendURL}
                   moduleId={moduleId}
                   designId={state.selectedDesignId}
-                  gridVisible={gridVisible}
                   cloudHeaders={autoLayoutCloudHeaders}
                   autoLayoutEnabled={autoLayoutEnabled}
                   autoLayoutSignedIn={autoLayoutSignedIn}

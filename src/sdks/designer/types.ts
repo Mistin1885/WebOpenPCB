@@ -470,6 +470,10 @@ export interface PcbViewState {
   perLayerOpacity: Partial<Record<PcbLayerId, number>>;
   layerPreset: PcbLayerPreset;
   ratsnestVisible: boolean;
+  /** Draw the fixed 1 mm board grid. Absent on older designs = enabled. */
+  gridVisible?: boolean;
+  /** Snap interactive board edits to the 1 mm grid. Independent of visibility. */
+  gridSnapEnabled?: boolean;
   /**
    * Figma-style placement/routing alignment guides + magnetic snapping.
    * Optional so board_settings rows saved before this feature hydrate to the

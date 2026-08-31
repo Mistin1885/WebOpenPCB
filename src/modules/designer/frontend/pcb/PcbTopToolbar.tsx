@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   FlipHorizontal2,
+  Grid3X3,
   Magnet,
   MessageSquarePlus,
   Minus,
@@ -60,6 +61,10 @@ interface PcbTopToolbarProps {
   onFlipSelection: () => void;
   ratsnestVisible: boolean;
   onToggleRatsnest: () => void;
+  gridVisible: boolean;
+  onToggleGridVisible: () => void;
+  gridSnapEnabled: boolean;
+  onToggleGridSnap: () => void;
   /** Figma-style alignment guides + magnetic snap (Shift+G). */
   alignmentGuidesVisible: boolean;
   onToggleAlignmentGuides: () => void;
@@ -565,6 +570,10 @@ function AddDropdown({
 function ViewToggleDropdown({
   ratsnestVisible,
   onToggleRatsnest,
+  gridVisible,
+  onToggleGridVisible,
+  gridSnapEnabled,
+  onToggleGridSnap,
   alignmentGuidesVisible,
   onToggleAlignmentGuides,
   drcMarkersVisible,
@@ -572,6 +581,10 @@ function ViewToggleDropdown({
 }: {
   ratsnestVisible: boolean;
   onToggleRatsnest: () => void;
+  gridVisible: boolean;
+  onToggleGridVisible: () => void;
+  gridSnapEnabled: boolean;
+  onToggleGridSnap: () => void;
   alignmentGuidesVisible: boolean;
   onToggleAlignmentGuides: () => void;
   drcMarkersVisible: boolean;
@@ -591,6 +604,22 @@ function ViewToggleDropdown({
   }, [open]);
 
   const rows = [
+    {
+      key: "grid",
+      label: "Grid (1 mm)",
+      hint: "",
+      Icon: Grid3X3,
+      on: gridVisible,
+      onToggle: onToggleGridVisible,
+    },
+    {
+      key: "grid-snap",
+      label: "Snap to grid",
+      hint: "",
+      Icon: Magnet,
+      on: gridSnapEnabled,
+      onToggle: onToggleGridSnap,
+    },
     {
       key: "ratsnest",
       label: "Ratsnest",
@@ -624,8 +653,9 @@ function ViewToggleDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Show/hide ratsnest, guides, and DRC overlays"
-        aria-pressed={open}
+        title="Board view and snapping options"
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={`relative inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           open
             ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
@@ -642,13 +672,17 @@ function ViewToggleDropdown({
         </span>
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-30 mt-1 min-w-[190px] overflow-hidden rounded-md border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-950">
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1 min-w-[190px] overflow-hidden rounded-md border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-950"
+        >
           {rows.map((row) => (
             <button
               key={row.key}
               type="button"
               onClick={row.onToggle}
-              aria-pressed={row.on}
+              role="menuitemcheckbox"
+              aria-checked={row.on}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <row.Icon
@@ -678,6 +712,10 @@ export function PcbTopToolbar({
   onFlipSelection,
   ratsnestVisible,
   onToggleRatsnest,
+  gridVisible,
+  onToggleGridVisible,
+  gridSnapEnabled,
+  onToggleGridSnap,
   alignmentGuidesVisible,
   onToggleAlignmentGuides,
   drcPanelOpen,
@@ -934,6 +972,10 @@ export function PcbTopToolbar({
         <ViewToggleDropdown
           ratsnestVisible={ratsnestVisible}
           onToggleRatsnest={onToggleRatsnest}
+          gridVisible={gridVisible}
+          onToggleGridVisible={onToggleGridVisible}
+          gridSnapEnabled={gridSnapEnabled}
+          onToggleGridSnap={onToggleGridSnap}
           alignmentGuidesVisible={alignmentGuidesVisible}
           onToggleAlignmentGuides={onToggleAlignmentGuides}
           drcMarkersVisible={drcMarkersVisible}

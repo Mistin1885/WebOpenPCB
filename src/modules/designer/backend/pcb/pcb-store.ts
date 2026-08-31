@@ -502,6 +502,15 @@ function parseViewState(value: unknown): PcbViewState {
         : record.ratsnestVisible === true
           ? true
           : defaults.ratsnestVisible,
+    gridVisible: parseBool(record.gridVisible, defaults.gridVisible ?? true),
+    gridSnapEnabled: parseBool(
+      record.gridSnapEnabled,
+      defaults.gridSnapEnabled ?? true,
+    ),
+    alignmentGuidesVisible: parseBool(
+      record.alignmentGuidesVisible,
+      defaults.alignmentGuidesVisible ?? true,
+    ),
     drcIgnoredRuleClasses: parseDrcRuleClasses(record.drcIgnoredRuleClasses),
     drcWaivedViolationIds: parseStringArray(record.drcWaivedViolationIds),
     autoLayoutConfig: parseAutoLayoutConfig(record.autoLayoutConfig),
@@ -533,6 +542,18 @@ function mergeViewState(
       patch.ratsnestVisible !== undefined
         ? patch.ratsnestVisible
         : current.ratsnestVisible,
+    gridVisible:
+      patch.gridVisible !== undefined
+        ? patch.gridVisible
+        : (current.gridVisible ?? true),
+    gridSnapEnabled:
+      patch.gridSnapEnabled !== undefined
+        ? patch.gridSnapEnabled
+        : (current.gridSnapEnabled ?? true),
+    alignmentGuidesVisible:
+      patch.alignmentGuidesVisible !== undefined
+        ? patch.alignmentGuidesVisible
+        : (current.alignmentGuidesVisible ?? true),
     drcIgnoredRuleClasses: patch.drcIgnoredRuleClasses
       ? parseDrcRuleClasses(patch.drcIgnoredRuleClasses)
       : (current.drcIgnoredRuleClasses ?? []),
