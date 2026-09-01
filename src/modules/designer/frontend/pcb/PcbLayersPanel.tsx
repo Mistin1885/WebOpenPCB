@@ -5,6 +5,8 @@ import {
   Eye,
   EyeOff,
   Focus,
+  Grid3X3,
+  Magnet,
   SlidersHorizontal,
 } from "lucide-react";
 import {
@@ -41,6 +43,12 @@ interface PcbLayersPanelProps {
   onSetActiveLayer: (layer: PcbLayerId) => void;
   visibleLayers: ReadonlyArray<PcbLayerId>;
   onSetVisibleLayers: (layers: ReadonlyArray<PcbLayerId>) => void;
+  gridVisible?: boolean;
+  onToggleGridVisible?: () => void;
+  gridSizeMm?: number;
+  onSetGridSizeMm?: (sizeMm: number) => void;
+  gridSnapEnabled?: boolean;
+  onToggleGridSnap?: () => void;
   /** 2 → hide In1.Cu / In2.Cu nodes. */
   layerCount?: PcbLayerCount;
   displayMode?: PcbDisplayMode;
@@ -101,6 +109,12 @@ export function PcbLayersPanel({
   onSetActiveLayer,
   visibleLayers,
   onSetVisibleLayers,
+  gridVisible = true,
+  onToggleGridVisible,
+  gridSizeMm = 1,
+  onSetGridSizeMm,
+  gridSnapEnabled = true,
+  onToggleGridSnap,
   layerCount = 2,
   displayMode = "normal",
   onSetDisplayMode,
@@ -230,6 +244,67 @@ export function PcbLayersPanel({
       {viewSide && onToggleViewSide ? (
         <div className="flex justify-end px-2 py-1">
           <PcbSideModeButton viewSide={viewSide} onToggle={onToggleViewSide} />
+        </div>
+      ) : null}
+      {onToggleGridVisible && onSetGridSizeMm && onToggleGridSnap ? (
+        <div className="border-b border-slate-200 px-2 py-2 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <Grid3X3
+              className={`h-3.5 w-3.5 ${
+                gridVisible
+                  ? "text-sky-600 dark:text-sky-300"
+                  : "text-slate-400"
+              }`}
+            />
+            <span className="min-w-0 flex-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+              Grid
+            </span>
+            <button
+              type="button"
+              onClick={onToggleGridSnap}
+              aria-pressed={gridSnapEnabled}
+              title={
+                gridSnapEnabled
+                  ? "Disable grid snapping"
+                  : "Enable grid snapping"
+              }
+              className={`rounded p-1 ${
+                gridSnapEnabled
+                  ? "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-200"
+                  : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-100"
+              }`}
+            >
+              <Magnet className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleGridVisible}
+              aria-pressed={gridVisible}
+              title={gridVisible ? "Hide grid layer" : "Show grid layer"}
+              className="rounded p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-100"
+            >
+              {gridVisible ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+          <label className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Spacing
+            <select
+              value={gridSizeMm}
+              onChange={(event) => onSetGridSizeMm(Number(event.target.value))}
+              className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs normal-case text-slate-700 outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              aria-label="Grid spacing"
+            >
+              {[0.1, 0.25, 0.5, 1, 2.5, 5].map((size) => (
+                <option key={size} value={size}>
+                  {size} mm
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
       {onSelectLayerPreset ? (

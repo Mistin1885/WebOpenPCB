@@ -15,6 +15,7 @@ import type {
   PcbFreeHole,
   PcbFreePad,
   PcbLayerId,
+  PcbMeasurement,
   PcbOverlayText,
   PcbPlacedPart,
   PcbPointMm,
@@ -35,7 +36,6 @@ import {
   placementContributingLayers,
 } from "../../../../shared/frontend/canvas/scene/layer-side";
 import { EDAText } from "../../../../shared/frontend/canvas/primitives/EDAText";
-import { GridShader } from "../../../../shared/frontend/canvas/primitives/GridShader";
 import {
   PCB_LAYER_COLORS,
   RENDER_ORDER,
@@ -79,6 +79,8 @@ import type {
 } from "./guides/guide-types";
 import { MeasureOverlayLayer } from "./layers/MeasureOverlayLayer";
 import { usePcbViewStore } from "./pcb-view-store";
+import { PcbAdaptiveGrid } from "./PcbAdaptiveGrid";
+import { resolvePcbGridContrast } from "./pcb-grid-contrast";
 import { SelectionRectOverlay } from "../../../../shared/frontend/canvas/selection";
 import {
   areViasVisible,
@@ -1401,8 +1403,9 @@ interface PcbSceneProps {
     freePads?: ReadonlyMap<string, PcbFreePad>;
     overlayTexts?: ReadonlyMap<string, PcbOverlayText>;
   } | null;
-  /** Whether the fixed 1 mm board grid is drawn. */
+  /** Whether the board grid is drawn. */
   gridVisible?: boolean;
+  gridSizeMm?: number;
   highlightedNetId?: string | null;
   ratsnestVisible?: boolean;
   /** Board view orientation. `"bottom"` mirrors the scene horizontally. */
@@ -1515,6 +1518,7 @@ interface PcbSceneProps {
     end: PcbPointMm;
     showDeltas: boolean;
   } | null;
+  measurements?: ReadonlyArray<PcbMeasurement>;
   /**
    * Active snap target. Rendered as a color-coded ring at the resolved
    * point so the user can see where a click would land. The snap engine
@@ -1548,6 +1552,7 @@ export function PcbScene({
   freePrimitiveDragOverrides,
   freePrimitiveResizeOverrides,
   gridVisible = true,
+  gridSizeMm = 1,
   highlightedNetId,
   ratsnestVisible = true,
   viewSide = "top",
@@ -1570,6 +1575,7 @@ export function PcbScene({
   copperFillLayers = [],
   marqueeOverlay = null,
   measurement = null,
+  measurements = [],
   snapTarget = null,
   alignmentGuides = [],
   alignmentSpacing = [],
@@ -1579,6 +1585,7 @@ export function PcbScene({
   onCameraReady,
 }: PcbSceneProps): ReactElement {
   const invalidate = useThree((state) => state.invalidate);
+  const { theme } = useCanvasTheme();
 
   useEffect(() => {
     invalidate();
@@ -1616,6 +1623,19 @@ export function PcbScene({
   const visibleLayers = useMemo(
     () => visibleLayerSet(projection.board.visibleLayers),
     [projection.board.visibleLayers],
+  );
+  const gridContrast = useMemo(
+    () =>
+      resolvePcbGridContrast([
+        theme.pcbCanvas.background,
+        theme.pcbCanvas.boardFill,
+        ...projection.board.visibleLayers.map(layerColor),
+      ]),
+    [
+      projection.board.visibleLayers,
+      theme.pcbCanvas.background,
+      theme.pcbCanvas.boardFill,
+    ],
   );
   const renderPlacements = useMemo<ReadonlyArray<PcbPlacedPart>>(() => {
     // In preview, affected components already carry their proposed pose in
@@ -2003,12 +2023,11 @@ export function PcbScene({
           <ViewportReporter onViewportChange={onViewportChange} />
         )}
         {gridVisible ? (
-          <GridShader
-            gridSize={1}
+          <PcbAdaptiveGrid
+            gridSize={gridSizeMm}
             majorEvery={5}
-            color="#3f4754"
-            alpha={0.22}
-            majorAlpha={0.45}
+            coreColor={gridContrast.coreColor}
+            outlineColor={gridContrast.outlineColor}
             minSpacingPx={5}
           />
         ) : null}
@@ -2318,6 +2337,15 @@ export function PcbScene({
           b={marqueeOverlay?.b ?? null}
           color={marqueeOverlay?.color ?? "#60a5fa"}
         />
+        {measurements.map((item) => (
+          <MeasureOverlayLayer
+            key={item.id}
+            start={item.startMm}
+            end={item.endMm}
+            showDeltas={item.showDeltas}
+            counterMirror={mirror}
+          />
+        ))}
         {measurement ? (
           <MeasureOverlayLayer
             start={measurement.start}

@@ -47,6 +47,7 @@ const DEFAULT_VIEW_STATE: PcbViewState = {
   layerPreset: "custom",
   ratsnestVisible: true,
   gridVisible: true,
+  gridSizeMm: 1,
   gridSnapEnabled: true,
   alignmentGuidesVisible: true,
   drcIgnoredRuleClasses: [],
@@ -122,6 +123,7 @@ interface PcbViewStoreActions {
   toggleRatsnestVisible(): void;
   setGridVisible(visible: boolean): void;
   toggleGridVisible(): void;
+  setGridSizeMm(sizeMm: number): void;
   setGridSnapEnabled(enabled: boolean): void;
   toggleGridSnapEnabled(): void;
   setAlignmentGuidesVisible(visible: boolean): void;
@@ -310,6 +312,15 @@ export const usePcbViewStore = create<Store>((set, get) => ({
 
   toggleGridVisible() {
     get().setGridVisible(!(get().viewState.gridVisible ?? true));
+  },
+
+  setGridSizeMm(sizeMm) {
+    const normalized = Math.max(0.05, Math.min(10, sizeMm));
+    if ((get().viewState.gridSizeMm ?? 1) === normalized) return;
+    set((s) => ({
+      viewState: { ...s.viewState, gridSizeMm: normalized },
+    }));
+    persistPatch({ gridSizeMm: normalized });
   },
 
   setGridSnapEnabled(enabled) {

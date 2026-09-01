@@ -7,13 +7,13 @@ import {
   Eye,
   EyeOff,
   FlipHorizontal2,
-  Grid3X3,
   Magnet,
   MessageSquarePlus,
   Minus,
   Network,
   Plus,
   Redo2,
+  Ruler,
   ScanSearch,
   ShieldAlert,
   Square,
@@ -61,10 +61,6 @@ interface PcbTopToolbarProps {
   onFlipSelection: () => void;
   ratsnestVisible: boolean;
   onToggleRatsnest: () => void;
-  gridVisible: boolean;
-  onToggleGridVisible: () => void;
-  gridSnapEnabled: boolean;
-  onToggleGridSnap: () => void;
   /** Figma-style alignment guides + magnetic snap (Shift+G). */
   alignmentGuidesVisible: boolean;
   onToggleAlignmentGuides: () => void;
@@ -424,6 +420,8 @@ function AddDropdown({
   onTogglePadMode,
   textMode,
   onToggleTextMode,
+  measureMode,
+  onToggleMeasureMode,
   commentMode,
   onToggleCommentMode,
 }: {
@@ -433,6 +431,8 @@ function AddDropdown({
   onTogglePadMode: () => void;
   textMode: boolean;
   onToggleTextMode: () => void;
+  measureMode: boolean;
+  onToggleMeasureMode: () => void;
   /** Comment tool — only offered when the caller wires it. */
   commentMode?: boolean;
   onToggleCommentMode?: () => void;
@@ -487,6 +487,18 @@ function AddDropdown({
       activeClass:
         "border-cyan-500 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
     },
+    {
+      key: "measurement",
+      label: "Measurement",
+      hotkey: "M",
+      title:
+        "Measure distance (M) — click two points to draw a labelled measurement line",
+      Icon: Ruler,
+      active: measureMode,
+      onToggle: onToggleMeasureMode,
+      activeClass:
+        "border-sky-500 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    },
     ...(onToggleCommentMode
       ? [
           {
@@ -513,9 +525,12 @@ function AddDropdown({
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={
-          activeItem ? activeItem.title : "Add hole, pad, or silkscreen text"
+          activeItem
+            ? activeItem.title
+            : "Add hole, pad, text, measurement, or comment"
         }
-        aria-pressed={Boolean(activeItem)}
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           activeItem
             ? activeItem.activeClass
@@ -535,6 +550,8 @@ function AddDropdown({
               key={it.key}
               type="button"
               title={it.title}
+              role="menuitemradio"
+              aria-checked={it.active}
               onClick={() => {
                 it.onToggle();
                 setOpen(false);
@@ -570,10 +587,6 @@ function AddDropdown({
 function ViewToggleDropdown({
   ratsnestVisible,
   onToggleRatsnest,
-  gridVisible,
-  onToggleGridVisible,
-  gridSnapEnabled,
-  onToggleGridSnap,
   alignmentGuidesVisible,
   onToggleAlignmentGuides,
   drcMarkersVisible,
@@ -581,10 +594,6 @@ function ViewToggleDropdown({
 }: {
   ratsnestVisible: boolean;
   onToggleRatsnest: () => void;
-  gridVisible: boolean;
-  onToggleGridVisible: () => void;
-  gridSnapEnabled: boolean;
-  onToggleGridSnap: () => void;
   alignmentGuidesVisible: boolean;
   onToggleAlignmentGuides: () => void;
   drcMarkersVisible: boolean;
@@ -604,22 +613,6 @@ function ViewToggleDropdown({
   }, [open]);
 
   const rows = [
-    {
-      key: "grid",
-      label: "Grid (1 mm)",
-      hint: "",
-      Icon: Grid3X3,
-      on: gridVisible,
-      onToggle: onToggleGridVisible,
-    },
-    {
-      key: "grid-snap",
-      label: "Snap to grid",
-      hint: "",
-      Icon: Magnet,
-      on: gridSnapEnabled,
-      onToggle: onToggleGridSnap,
-    },
     {
       key: "ratsnest",
       label: "Ratsnest",
@@ -712,10 +705,6 @@ export function PcbTopToolbar({
   onFlipSelection,
   ratsnestVisible,
   onToggleRatsnest,
-  gridVisible,
-  onToggleGridVisible,
-  gridSnapEnabled,
-  onToggleGridSnap,
   alignmentGuidesVisible,
   onToggleAlignmentGuides,
   drcPanelOpen,
@@ -937,6 +926,8 @@ export function PcbTopToolbar({
           onTogglePadMode={onTogglePadMode}
           textMode={textMode}
           onToggleTextMode={onToggleTextMode}
+          measureMode={measureMode}
+          onToggleMeasureMode={onToggleMeasureMode}
           commentMode={commentMode}
           onToggleCommentMode={onToggleCommentMode}
         />
@@ -972,10 +963,6 @@ export function PcbTopToolbar({
         <ViewToggleDropdown
           ratsnestVisible={ratsnestVisible}
           onToggleRatsnest={onToggleRatsnest}
-          gridVisible={gridVisible}
-          onToggleGridVisible={onToggleGridVisible}
-          gridSnapEnabled={gridSnapEnabled}
-          onToggleGridSnap={onToggleGridSnap}
           alignmentGuidesVisible={alignmentGuidesVisible}
           onToggleAlignmentGuides={onToggleAlignmentGuides}
           drcMarkersVisible={drcMarkersVisible}

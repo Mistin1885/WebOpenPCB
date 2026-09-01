@@ -100,6 +100,7 @@ import {
   type AutoroutePreviewTrace,
   type PcbCameraControls,
 } from "./PcbScene";
+import { RightButtonPan } from "./RightButtonPan";
 import type { ViewportState } from "../types";
 import { PcbTopToolbar } from "./PcbTopToolbar";
 import { PcbExportDialog } from "./PcbExportDialog";
@@ -272,13 +273,20 @@ import {
 
 const NM_PER_MM = 1_000_000;
 
-function snapMm(value: number, gridEnabled: boolean): number {
+function snapMm(value: number, gridEnabled: boolean, gridSizeMm: number): number {
   if (!gridEnabled) return value;
-  return Math.round(value / PCB_GRID_MM) * PCB_GRID_MM;
+  return Math.round(value / gridSizeMm) * gridSizeMm;
 }
 
-function snapPointMm(p: PcbPointMm, gridEnabled: boolean): PcbPointMm {
-  return { x: snapMm(p.x, gridEnabled), y: snapMm(p.y, gridEnabled) };
+function snapPointMm(
+  p: PcbPointMm,
+  gridEnabled: boolean,
+  gridSizeMm: number,
+): PcbPointMm {
+  return {
+    x: snapMm(p.x, gridEnabled, gridSizeMm),
+    y: snapMm(p.y, gridEnabled, gridSizeMm),
+  };
 }
 
 function pointMmToNm(p: PcbPointMm): PointNm {
@@ -532,15 +540,18 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
   const gridSnapEnabled = usePcbViewStore(
     (state) => state.viewState.gridSnapEnabled ?? true,
   );
+  const gridSizeMm = usePcbViewStore(
+    (state) => state.viewState.gridSizeMm ?? PCB_GRID_MM,
+  );
   // Stable identities — several per-pointer-move memos (bundlePreview, …)
   // list these as deps; plain arrows would invalidate them on EVERY render.
   const snap = useCallback(
-    (v: number) => snapMm(v, gridSnapEnabled),
-    [gridSnapEnabled],
+    (v: number) => snapMm(v, gridSnapEnabled, gridSizeMm),
+    [gridSizeMm, gridSnapEnabled],
   );
   const snapPoint = useCallback(
-    (p: PcbPointMm) => snapPointMm(p, gridSnapEnabled),
-    [gridSnapEnabled],
+    (p: PcbPointMm) => snapPointMm(p, gridSnapEnabled, gridSizeMm),
+    [gridSizeMm, gridSnapEnabled],
   );
 
   const workspace = usePcbWorkspace({
@@ -2599,10 +2610,17 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         }
 
         if (toolMode === "measure") {
-          dispatchMeasure({
-            kind: "click",
-            anchor: resolveMeasureAnchor(cursor),
-          });
+          const anchor = resolveMeasureAnchor(cursor);
+          if (measureState.kind === "measuring") {
+            void workspace.addMeasurement(
+              measureState.start.pointMm,
+              anchor.pointMm,
+              measureShowDeltas,
+            );
+            dispatchMeasure({ kind: "clear" });
+          } else {
+            dispatchMeasure({ kind: "click", anchor });
+          }
           setSelection(emptyPcbSelection());
           setDragSession(null);
           setFreePrimitiveDragSession(null);
@@ -4085,6 +4103,8 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
     findNearestPadOnNet,
     finishRoute,
     marquee,
+    measureShowDeltas,
+    measureState,
     padToNet,
     pendingRouteGeometry,
     previewActive,
@@ -5301,13 +5321,6 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
   );
 
   const sceneMeasurement = useMemo(() => {
-    if (measureState.kind === "locked") {
-      return {
-        start: measureState.start.pointMm,
-        end: measureState.end.pointMm,
-        showDeltas: measureShowDeltas,
-      };
-    }
     if (measureState.kind === "measuring" && cursorMm) {
       return {
         start: measureState.start.pointMm,
@@ -5385,6 +5398,10 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
           interactionHandler={handler}
           interactionCoordinateTransform={interactionCoordinateTransform}
         >
+          <RightButtonPan
+            interactionHandler={handler}
+            interactionCoordinateTransform={interactionCoordinateTransform}
+          />
           <PcbScene
             projection={workspace.projection}
             selection={sceneSelection}
@@ -5411,6 +5428,7 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
             freePrimitiveDragOverrides={freePrimitiveDragOverrides}
             freePrimitiveResizeOverrides={freePrimitiveResizeOverrides}
             gridVisible={gridVisible}
+            gridSizeMm={gridSizeMm}
             highlightedNetId={workspace.highlightedNetId}
             ratsnestVisible={workspace.ratsnestVisible}
             viewSide={workspace.viewSide}
@@ -5438,6 +5456,7 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
             copperFillLayers={workspace.copperFillLayers}
             marqueeOverlay={sceneMarqueeOverlay}
             measurement={sceneMeasurement}
+            measurements={workspace.projection.board.measurements ?? []}
             snapTarget={snapTarget}
             alignmentGuides={alignmentGuides}
             alignmentSpacing={alignmentSpacing}
@@ -5586,14 +5605,6 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
               }}
               ratsnestVisible={workspace.ratsnestVisible}
               onToggleRatsnest={workspace.toggleRatsnestVisible}
-              gridVisible={gridVisible}
-              onToggleGridVisible={() =>
-                usePcbViewStore.getState().toggleGridVisible()
-              }
-              gridSnapEnabled={gridSnapEnabled}
-              onToggleGridSnap={() =>
-                usePcbViewStore.getState().toggleGridSnapEnabled()
-              }
               alignmentGuidesVisible={alignmentGuidesEnabled}
               onToggleAlignmentGuides={() =>
                 usePcbViewStore.getState().toggleAlignmentGuidesVisible()
@@ -6123,6 +6134,18 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
               visibleLayers={workspace.projection.board.visibleLayers}
               onSetVisibleLayers={(layers) =>
                 void workspace.setVisibleLayers(layers)
+              }
+              gridVisible={gridVisible}
+              onToggleGridVisible={() =>
+                usePcbViewStore.getState().toggleGridVisible()
+              }
+              gridSizeMm={gridSizeMm}
+              onSetGridSizeMm={(sizeMm) =>
+                usePcbViewStore.getState().setGridSizeMm(sizeMm)
+              }
+              gridSnapEnabled={gridSnapEnabled}
+              onToggleGridSnap={() =>
+                usePcbViewStore.getState().toggleGridSnapEnabled()
               }
               layerCount={workspace.projection.board.layerCount}
               displayMode={workspace.displayMode}

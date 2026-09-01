@@ -30,6 +30,7 @@ import { DesignerDrcView } from "./components/DesignerDrcView";
 import { DesignerStatusBar } from "./components/DesignerStatusBar";
 import { DesignerSidebar } from "./components/DesignerSidebar";
 import { useDrcStore } from "./pcb/drc/drc-store";
+import { usePcbViewStore } from "./pcb/pcb-view-store";
 import {
   SchematicCanvas,
   type SchematicCanvasHandle,
@@ -61,9 +62,6 @@ const MIN_LEFT = 240;
 const MAX_LEFT = 520;
 const MIN_CHAT = 320;
 const MAX_CHAT = 560;
-// Placeholder grid spacing for the PCB/DRC status bar (50 mil). The PCB editor
-// has no grid-snap state yet; surface a sensible default until one exists.
-const PCB_STATUS_GRID_MM = 1.27;
 const MIN_INSPECTOR = 260;
 const MAX_INSPECTOR = 440;
 const MIN_DRC = 280;
@@ -461,6 +459,9 @@ function DesignerSpaceInner({
     clamp(readPersistedNumber(DRC_WIDTH_KEY, 360), MIN_DRC, MAX_DRC),
   );
   const [zoomPercent, setZoomPercent] = useState(20);
+  const pcbGridSizeMm = usePcbViewStore(
+    (store) => store.viewState.gridSizeMm ?? 1,
+  );
   const [gridVisible, setGridVisible] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Live in-progress-trace DRC conflict count while routing; `null` when idle so
@@ -1283,7 +1284,7 @@ function DesignerSpaceInner({
                 />
               </div>
               <DesignerStatusBar
-                gridMm={PCB_STATUS_GRID_MM}
+                gridMm={pcbGridSizeMm}
                 zoom={zoomPercent}
                 selection={
                   pcbSelectionCount > 0
@@ -1326,7 +1327,7 @@ function DesignerSpaceInner({
                 />
               </div>
               <DesignerStatusBar
-                gridMm={PCB_STATUS_GRID_MM}
+                gridMm={pcbGridSizeMm}
                 zoom={zoomPercent}
                 selection="—"
                 drcCount={

@@ -503,6 +503,10 @@ function parseViewState(value: unknown): PcbViewState {
           ? true
           : defaults.ratsnestVisible,
     gridVisible: parseBool(record.gridVisible, defaults.gridVisible ?? true),
+    gridSizeMm: Math.max(
+      0.05,
+      Math.min(10, asNumber(record.gridSizeMm) ?? defaults.gridSizeMm ?? 1),
+    ),
     gridSnapEnabled: parseBool(
       record.gridSnapEnabled,
       defaults.gridSnapEnabled ?? true,
@@ -521,6 +525,7 @@ function mergeViewState(
   current: PcbViewState,
   patch: Partial<PcbViewState>,
 ): PcbViewState {
+  const requestedGridSize = asNumber(patch.gridSizeMm);
   return {
     displayMode: patch.displayMode ?? current.displayMode,
     viewSide: patch.viewSide ?? current.viewSide,
@@ -546,6 +551,10 @@ function mergeViewState(
       patch.gridVisible !== undefined
         ? patch.gridVisible
         : (current.gridVisible ?? true),
+    gridSizeMm:
+      requestedGridSize !== null && requestedGridSize > 0
+        ? Math.max(0.05, Math.min(10, requestedGridSize))
+        : (current.gridSizeMm ?? 1),
     gridSnapEnabled:
       patch.gridSnapEnabled !== undefined
         ? patch.gridSnapEnabled
@@ -697,10 +706,26 @@ function parseBoardSettings(value: unknown): PcbBoardSettings | null {
   );
   const drcRules = parseDrcRules(record.drcRules);
   const diffPairs = parseDiffPairs(record.diffPairs);
+  const measurements = Array.isArray(record.measurements)
+    ? record.measurements.flatMap((raw) => {
+        const item = asRecord(raw);
+        const id = asString(item?.id);
+        const startMm = parsePointOrNull(item?.startMm);
+        const endMm = parsePointOrNull(item?.endMm);
+        if (!id || !startMm || !endMm) return [];
+        return [{
+          id,
+          startMm,
+          endMm,
+          showDeltas: item?.showDeltas === true,
+        }];
+      })
+    : [];
   return {
     ...defaults,
     outline: outlineParsed,
     ...(cutouts !== undefined ? { cutouts } : {}),
+    ...(measurements.length > 0 ? { measurements } : {}),
     activeLayer,
     visibleLayers: parseVisibleLayers(record.visibleLayers),
     designRules: parseDesignRules(record.designRules, defaults.designRules),

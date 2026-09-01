@@ -59,6 +59,8 @@ import type {
   DesignerPcbSetBoardSettingsCommand,
   DesignerPcbSetBoardOutlineCommand,
   DesignerPcbSetViewStateCommand,
+  DesignerPcbAddMeasurementCommand,
+  DesignerPcbDeleteMeasurementCommand,
   DesignerPcbSetDesignRulesCommand,
   PcbDesignRules,
   PcbLengthMatchGroup,
@@ -1618,6 +1620,33 @@ function parsePcbSetViewStateCommand(
   };
 }
 
+function parsePcbAddMeasurementCommand(
+  raw: Record<string, unknown>,
+): DesignerPcbAddMeasurementCommand {
+  const command: DesignerPcbAddMeasurementCommand = {
+    type: "pcb_add_measurement",
+    startMm: parsePointMm(raw.startMm, "command.startMm"),
+    endMm: parsePointMm(raw.endMm, "command.endMm"),
+  };
+  if (raw.showDeltas !== undefined) {
+    if (typeof raw.showDeltas !== "boolean") {
+      throw new ValidationError("command.showDeltas must be a boolean");
+    }
+    command.showDeltas = raw.showDeltas;
+  }
+  return command;
+}
+
+function parsePcbDeleteMeasurementCommand(
+  raw: Record<string, unknown>,
+): DesignerPcbDeleteMeasurementCommand {
+  const measurementId = asString(raw.measurementId);
+  if (!measurementId) {
+    throw new ValidationError("command.measurementId must be a string");
+  }
+  return { type: "pcb_delete_measurement", measurementId };
+}
+
 function parsePcbSetDesignRulesCommand(
   raw: Record<string, unknown>,
 ): DesignerPcbSetDesignRulesCommand {
@@ -2338,6 +2367,12 @@ function parseCommandEnvelope(body: unknown): DesignerCommandEnvelope {
       break;
     case "pcb_set_view_state":
       command = parsePcbSetViewStateCommand(commandRecord);
+      break;
+    case "pcb_add_measurement":
+      command = parsePcbAddMeasurementCommand(commandRecord);
+      break;
+    case "pcb_delete_measurement":
+      command = parsePcbDeleteMeasurementCommand(commandRecord);
       break;
     case "pcb_set_design_rules":
       command = parsePcbSetDesignRulesCommand(commandRecord);

@@ -124,6 +124,7 @@ describe("designer PCB view-state persistence", () => {
     expect(viewState?.perLayerOpacity).toEqual({});
     expect(viewState?.ratsnestVisible).toBe(true);
     expect(viewState?.gridVisible).toBe(true);
+    expect(viewState?.gridSizeMm).toBe(1);
     expect(viewState?.gridSnapEnabled).toBe(true);
   });
 
@@ -143,6 +144,7 @@ describe("designer PCB view-state persistence", () => {
           layerPreset: "top-side",
           ratsnestVisible: false,
           gridVisible: false,
+          gridSizeMm: 0.25,
           gridSnapEnabled: false,
         },
       }),
@@ -166,6 +168,7 @@ describe("designer PCB view-state persistence", () => {
     expect(viewState?.layerPreset).toBe("top-side");
     expect(viewState?.ratsnestVisible).toBe(false);
     expect(viewState?.gridVisible).toBe(false);
+    expect(viewState?.gridSizeMm).toBe(0.25);
     expect(viewState?.gridSnapEnabled).toBe(false);
   });
 

@@ -26,6 +26,7 @@ export function createDefaultPcbViewState(): PcbViewState {
     layerPreset: "custom",
     ratsnestVisible: true,
     gridVisible: true,
+    gridSizeMm: 1,
     gridSnapEnabled: true,
     drcIgnoredRuleClasses: [],
     drcWaivedViolationIds: [],

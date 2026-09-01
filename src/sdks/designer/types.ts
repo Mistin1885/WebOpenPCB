@@ -472,7 +472,9 @@ export interface PcbViewState {
   ratsnestVisible: boolean;
   /** Draw the fixed 1 mm board grid. Absent on older designs = enabled. */
   gridVisible?: boolean;
-  /** Snap interactive board edits to the 1 mm grid. Independent of visibility. */
+  /** Grid spacing in millimetres. Absent on older designs = 1 mm. */
+  gridSizeMm?: number;
+  /** Snap interactive board edits to the configured grid. Independent of visibility. */
   gridSnapEnabled?: boolean;
   /**
    * Figma-style placement/routing alignment guides + magnetic snapping.
@@ -503,6 +505,15 @@ export interface PcbViewState {
 export interface PcbPointMm {
   x: number;
   y: number;
+}
+
+/** Persistent, non-fabrication board annotation created by the Measure tool. */
+export interface PcbMeasurement {
+  id: string;
+  startMm: PcbPointMm;
+  endMm: PcbPointMm;
+  /** Persist whether the label includes the ΔX / ΔY readout. */
+  showDeltas: boolean;
 }
 
 export type PcbBoardOutline =
@@ -762,6 +773,8 @@ export interface PcbBoardSettings {
    * pre-cutout saves; readers must treat an absent field as an empty list.
    */
   cutouts?: PcbBoardCutout[];
+  /** User-authored measurement annotations; excluded from fabrication output. */
+  measurements?: PcbMeasurement[];
   activeLayer: PcbLayerId;
   visibleLayers: PcbLayerId[];
   designRules: PcbDesignRules;
@@ -1623,6 +1636,18 @@ export interface DesignerPcbSetViewStateCommand {
   patch: Partial<PcbViewState>;
 }
 
+export interface DesignerPcbAddMeasurementCommand {
+  type: "pcb_add_measurement";
+  startMm: PcbPointMm;
+  endMm: PcbPointMm;
+  showDeltas?: boolean;
+}
+
+export interface DesignerPcbDeleteMeasurementCommand {
+  type: "pcb_delete_measurement";
+  measurementId: string;
+}
+
 /**
  * Edit the board's design rules, net classes, and/or finished thickness.
  * Non-undoable settings change; bumps the revision so a prior DRC run is
@@ -1828,6 +1853,8 @@ export type DesignerCommand =
   | DesignerPcbUpdateTraceGeometryCommand
   | DesignerPcbCleanupPourTracesCommand
   | DesignerPcbSetViewStateCommand
+  | DesignerPcbAddMeasurementCommand
+  | DesignerPcbDeleteMeasurementCommand
   | DesignerPcbSetDesignRulesCommand
   | DesignerPcbDeletePlacementCommand
   | DesignerPcbAddFreeHoleCommand
