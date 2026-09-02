@@ -17,7 +17,6 @@ uniform float uGridSize;
 uniform float uMajorEvery;
 uniform vec3 uCoreColor;
 uniform vec3 uOutlineColor;
-uniform float uPixelsPerUnit;
 uniform float uMinSpacingPx;
 varying vec2 vWorldPos;
 
@@ -28,24 +27,45 @@ float lineDistance(vec2 coord) {
   return min(pixelDistance.x, pixelDistance.y);
 }
 
+float levelVisibility(vec2 coord) {
+  // Derive density from screen-space derivatives so the first demand-rendered
+  // frame does not depend on a later useFrame uniform update.
+  vec2 derivative = max(fwidth(coord), vec2(0.000001));
+  float spacingPx = 1.0 / max(derivative.x, derivative.y);
+  return smoothstep(uMinSpacingPx, uMinSpacingPx * 1.35, spacingPx);
+}
+
 void main() {
-  float gridPx = uGridSize * uPixelsPerUnit;
-  if (gridPx < uMinSpacingPx) discard;
+  vec2 minorCoord = vWorldPos / uGridSize;
+  vec2 majorCoord = vWorldPos / (uGridSize * uMajorEvery);
+  float minorVisibility = levelVisibility(minorCoord);
+  float majorVisibility = levelVisibility(majorCoord);
+  if (minorVisibility < 0.005 && majorVisibility < 0.005) discard;
 
-  float minorDistance = lineDistance(vWorldPos / uGridSize);
-  float majorDistance = lineDistance(vWorldPos / (uGridSize * uMajorEvery));
+  float minorDistance = lineDistance(minorCoord);
+  float majorDistance = lineDistance(majorCoord);
 
-  float minorOutline = 1.0 - smoothstep(1.35, 1.9, minorDistance);
-  float minorCore = 1.0 - smoothstep(0.45, 0.85, minorDistance);
-  float majorOutline = 1.0 - smoothstep(2.1, 2.8, majorDistance);
-  float majorCore = 1.0 - smoothstep(0.9, 1.35, majorDistance);
+  float minorOutline = 1.0 - smoothstep(0.8, 1.25, minorDistance);
+  float minorCore = 1.0 - smoothstep(0.25, 0.55, minorDistance);
+  float majorOutline = 1.0 - smoothstep(1.1, 1.6, majorDistance);
+  float majorCore = 1.0 - smoothstep(0.35, 0.7, majorDistance);
 
-  float outlineAlpha = max(minorOutline * 0.82, majorOutline);
-  float coreAlpha = max(minorCore * 0.88, majorCore);
+  float outlineAlpha = max(
+    minorOutline * 0.22 * minorVisibility,
+    majorOutline * 0.34 * majorVisibility
+  );
+  float coreAlpha = max(
+    minorCore * 0.36 * minorVisibility,
+    majorCore * 0.55 * majorVisibility
+  );
   float alpha = max(outlineAlpha, coreAlpha);
   if (alpha < 0.005) discard;
 
-  float coreMix = clamp(coreAlpha * 1.55, 0.0, 1.0);
+  float coreMix = clamp(
+    max(minorCore * minorVisibility, majorCore * majorVisibility) * 1.4,
+    0.0,
+    1.0
+  );
   vec3 color = mix(uOutlineColor, uCoreColor, coreMix);
   gl_FragColor = vec4(color, alpha);
 }
@@ -78,7 +98,6 @@ export function PcbAdaptiveGrid({
       uMajorEvery: { value: majorEvery },
       uCoreColor: { value: core },
       uOutlineColor: { value: outline },
-      uPixelsPerUnit: { value: 1 },
       uMinSpacingPx: { value: minSpacingPx },
     }),
     [core, gridSize, majorEvery, minSpacingPx, outline],
@@ -98,7 +117,6 @@ export function PcbAdaptiveGrid({
     mesh.position.y = orthographic.position.y;
     mesh.scale.x = viewport.width * 3;
     mesh.scale.y = viewport.height * 3;
-    uniforms.uPixelsPerUnit.value = orthographic.zoom;
   });
 
   return (

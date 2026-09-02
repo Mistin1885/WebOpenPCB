@@ -1600,6 +1600,7 @@ export function PcbScene({
     freePrimitiveDragOverrides,
     freePrimitiveResizeOverrides,
     gridVisible,
+    gridSizeMm,
     highlightedNetId,
     ratsnestVisible,
     viewSide,

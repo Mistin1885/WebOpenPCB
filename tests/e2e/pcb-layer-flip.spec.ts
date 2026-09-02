@@ -4,14 +4,13 @@ import { expect, test } from "@playwright/test";
  * Layer/flip semantics in OpenPCB:
  *  - Switching active layer (sidebar click / T / B / 1 / 2) does NOT flip the
  *    view. This direction stays orthogonal.
- *  - Shift+F / "Flip view" flips the view AND syncs the active copper layer
+ *  - Shift+F flips the view AND syncs the active copper layer
  *    to the side now facing the user (bottom → B.Cu, top → F.Cu).
  *  - viewSide persists across reload via localStorage.
  *  - Per-placement "Flip part" stays disabled when nothing is selected.
  */
 
 const CANVAS = '[data-testid="designer-pcb-canvas"]';
-const FLIP_VIEW_BUTTON = '[data-testid="pcb-flip-view-button"]';
 const FLIP_BADGE = '[data-testid="pcb-viewing-bottom-badge"]';
 const FLIP_TINT = '[data-testid="pcb-flip-tint"]';
 

@@ -39,6 +39,10 @@ export function RightButtonPan({
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const sessionRef = useRef<PanSession | null>(null);
+  const interactionHandlerRef = useRef(interactionHandler);
+  const coordinateTransformRef = useRef(interactionCoordinateTransform);
+  interactionHandlerRef.current = interactionHandler;
+  coordinateTransformRef.current = interactionCoordinateTransform;
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -48,10 +52,18 @@ export function RightButtonPan({
       event.stopImmediatePropagation();
     };
 
-    const release = () => {
+    const release = (pointerId?: number) => {
       const session = sessionRef.current;
       if (!session) return;
       sessionRef.current = null;
+      const capturedPointerId = pointerId ?? session.pointerId;
+      if (canvas.hasPointerCapture(capturedPointerId)) {
+        try {
+          canvas.releasePointerCapture(capturedPointerId);
+        } catch {
+          // The browser may already have released capture for a cancelled pointer.
+        }
+      }
       canvas.style.setProperty(
         "cursor",
         session.previousCanvasCursor,
@@ -72,10 +84,11 @@ export function RightButtonPan({
         0,
       );
       ndc.unproject(camera);
-      const worldPoint = interactionCoordinateTransform.scenePointToWorldPoint({
-        x: ndc.x,
-        y: ndc.y,
-      });
+      const worldPoint =
+        coordinateTransformRef.current.scenePointToWorldPoint({
+          x: ndc.x,
+          y: ndc.y,
+        });
       return {
         worldPoint,
         snappedPoint: worldPoint,
@@ -107,6 +120,11 @@ export function RightButtonPan({
         previousBodyCursorPriority:
           document.body.style.getPropertyPriority("cursor"),
       };
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        // Window-level listeners still keep the drag alive if capture is unavailable.
+      }
       canvas.style.setProperty("cursor", "grabbing", "important");
       document.body.style.setProperty("cursor", "grabbing", "important");
     };
@@ -138,9 +156,9 @@ export function RightButtonPan({
       if (!session || event.pointerId !== session.pointerId) return;
       consume(event);
       const openMenu = !session.moved;
-      release();
+      release(event.pointerId);
       if (openMenu) {
-        interactionHandler.onContextMenu?.(buildContextEvent(event));
+        interactionHandlerRef.current.onContextMenu?.(buildContextEvent(event));
         invalidate();
       }
     };
@@ -148,7 +166,7 @@ export function RightButtonPan({
     const handlePointerCancel = (event: PointerEvent) => {
       if (sessionRef.current?.pointerId !== event.pointerId) return;
       consume(event);
-      release();
+      release(event.pointerId);
     };
 
     const handleWindowBlur = () => release();
@@ -166,13 +184,7 @@ export function RightButtonPan({
       window.removeEventListener("blur", handleWindowBlur);
       release();
     };
-  }, [
-    camera,
-    gl,
-    interactionCoordinateTransform,
-    interactionHandler,
-    invalidate,
-  ]);
+  }, [camera, gl, invalidate]);
 
   return null;
 }

@@ -22,7 +22,6 @@ import type {
   PcbLayerCount,
   PcbLayerId,
   PcbLayerPreset,
-  PcbViewSide,
 } from "../../../../sdks";
 import {
   PCB_LAYER_COLORS,
@@ -32,7 +31,6 @@ import {
   type LayerTreeNode,
   type PcbLayerPresetId,
 } from "../../../../shared/frontend/canvas/layers";
-import { PcbSideModeButton } from "./PcbSideModeButton";
 
 interface PcbLayersPanelProps {
   activeLayer: PcbLayerId | null;
@@ -57,9 +55,6 @@ interface PcbLayersPanelProps {
   onToggleCopperFillLayer?: (layer: PcbCopperLayerId) => void;
   /** Delete same-net traces already fully covered by a pour (redundant routing). */
   onCleanupPourTraces?: () => void;
-  /** Side-mode toolbar state + handlers. When omitted the chip is hidden. */
-  viewSide?: PcbViewSide;
-  onToggleViewSide?: () => void;
   /** Preset chip handler. Receives the preset id; "custom" should be ignored. */
   onSelectLayerPreset?: (preset: PcbLayerPreset) => void;
   /**
@@ -121,8 +116,6 @@ export function PcbLayersPanel({
   copperFillLayers = [],
   onToggleCopperFillLayer,
   onCleanupPourTraces,
-  viewSide,
-  onToggleViewSide,
   onSelectLayerPreset,
   perLayerOpacity,
   onSetLayerOpacity,
@@ -241,11 +234,6 @@ export function PcbLayersPanel({
 
   return (
     <div className="flex flex-col">
-      {viewSide && onToggleViewSide ? (
-        <div className="flex justify-end px-2 py-1">
-          <PcbSideModeButton viewSide={viewSide} onToggle={onToggleViewSide} />
-        </div>
-      ) : null}
       {onToggleGridVisible && onSetGridSizeMm && onToggleGridSnap ? (
         <div className="border-b border-slate-200 px-2 py-2 dark:border-slate-800">
           <div className="flex items-center gap-2">

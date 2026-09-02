@@ -6164,8 +6164,6 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
                 // see `pcb-projection.ts`); no per-layer net/connection picker.
               }}
               onCleanupPourTraces={() => void workspace.cleanupPourTraces()}
-              viewSide={workspace.viewSide}
-              onToggleViewSide={handleToggleViewSide}
               onSelectLayerPreset={(preset) => {
                 if (preset === "custom") return;
                 // Resolve the preset spec, then apply via workspace methods
