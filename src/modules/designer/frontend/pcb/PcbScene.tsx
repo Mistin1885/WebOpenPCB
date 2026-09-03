@@ -2025,6 +2025,8 @@ export function PcbScene({
         )}
         {gridVisible ? (
           <PcbAdaptiveGrid
+            outline={outlineOverride ?? projection.board.outline}
+            cutouts={projection.board.cutouts}
             gridSize={gridSizeMm}
             majorEvery={5}
             coreColor={gridContrast.coreColor}

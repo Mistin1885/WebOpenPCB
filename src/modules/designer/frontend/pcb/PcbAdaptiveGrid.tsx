@@ -1,7 +1,8 @@
-import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef, type ReactElement } from "react";
+import { useEffect, useMemo, type ReactElement } from "react";
 import * as THREE from "three";
+import type { PcbBoardCutout, PcbBoardOutline } from "../../../../sdks";
 import { RENDER_ORDER } from "../../../../shared/frontend/canvas/layers";
+import { cutoutToPath, outlineToShape } from "./pcb-outline-three";
 
 const vertexShader = /* glsl */ `
 varying vec2 vWorldPos;
@@ -72,6 +73,10 @@ void main() {
 `;
 
 interface PcbAdaptiveGridProps {
+  /** The grid is clipped to the actual board contour rather than the canvas. */
+  outline: PcbBoardOutline;
+  /** Board apertures remain transparent, like the substrate beneath the grid. */
+  cutouts?: readonly PcbBoardCutout[];
   gridSize: number;
   majorEvery?: number;
   coreColor: string;
@@ -80,15 +85,16 @@ interface PcbAdaptiveGridProps {
 }
 
 export function PcbAdaptiveGrid({
+  outline,
+  cutouts = [],
   gridSize,
   majorEvery = 5,
   coreColor,
   outlineColor,
   minSpacingPx = 5,
 }: PcbAdaptiveGridProps): ReactElement {
-  const meshRef = useRef<THREE.Mesh>(null);
   const core = useMemo(() => new THREE.Color(coreColor), [coreColor]);
-  const outline = useMemo(
+  const outlineColorValue = useMemo(
     () => new THREE.Color(outlineColor),
     [outlineColor],
   );
@@ -97,35 +103,36 @@ export function PcbAdaptiveGrid({
       uGridSize: { value: gridSize },
       uMajorEvery: { value: majorEvery },
       uCoreColor: { value: core },
-      uOutlineColor: { value: outline },
+      uOutlineColor: { value: outlineColorValue },
       uMinSpacingPx: { value: minSpacingPx },
     }),
-    [core, gridSize, majorEvery, minSpacingPx, outline],
+    [core, gridSize, majorEvery, minSpacingPx, outlineColorValue],
   );
 
   uniforms.uGridSize.value = gridSize;
   uniforms.uMajorEvery.value = majorEvery;
   uniforms.uCoreColor.value.copy(core);
-  uniforms.uOutlineColor.value.copy(outline);
+  uniforms.uOutlineColor.value.copy(outlineColorValue);
   uniforms.uMinSpacingPx.value = minSpacingPx;
 
-  useFrame(({ camera, viewport }) => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    const orthographic = camera as THREE.OrthographicCamera;
-    mesh.position.x = orthographic.position.x;
-    mesh.position.y = orthographic.position.y;
-    mesh.scale.x = viewport.width * 3;
-    mesh.scale.y = viewport.height * 3;
-  });
+  // This mirrors BoardFill substrate geometry so the shader is constrained
+  // to the true board contour (including non-rectangular outlines and cutouts).
+  // The shader still uses world coordinates, preserving a stable grid origin.
+  const geometry = useMemo(() => {
+    const shape = outlineToShape(outline, outline.centerMm);
+    for (const cutout of cutouts) {
+      shape.holes.push(cutoutToPath(cutout.shape, outline.centerMm));
+    }
+    return new THREE.ShapeGeometry(shape);
+  }, [cutouts, outline]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
     <mesh
-      ref={meshRef}
+      geometry={geometry}
+      position={[outline.centerMm.x, outline.centerMm.y, 0]}
       renderOrder={RENDER_ORDER.METADATA - 0.5}
-      frustumCulled={false}
     >
-      <planeGeometry args={[1, 1]} />
       <shaderMaterial
         uniforms={uniforms}
         vertexShader={vertexShader}
