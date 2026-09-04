@@ -2,6 +2,7 @@ import type {
   PcbCopperLayerId,
   PcbFreeHole,
   PcbFreePad,
+  PcbMeasurement,
   PcbOverlayText,
   PcbPlacedPart,
   PcbPointMm,
@@ -250,6 +251,26 @@ export function hitOverlayText(
     }
   }
   return null;
+}
+
+/** Hit-test persisted measurement lines and their endpoint markers. */
+export function hitMeasurement(
+  measurements: readonly PcbMeasurement[],
+  cursorMm: PcbPointMm,
+): PcbMeasurement | null {
+  const toleranceMm = 0.3;
+  let best: { measurement: PcbMeasurement; distance: number } | null = null;
+  for (const measurement of measurements) {
+    const distance = projectPointToSegment(
+      cursorMm,
+      measurement.startMm,
+      measurement.endMm,
+    ).distance;
+    if (distance <= toleranceMm && (!best || distance < best.distance)) {
+      best = { measurement, distance };
+    }
+  }
+  return best?.measurement ?? null;
 }
 
 /** Hit-test through-vias. Bounds-check against via outer diameter. */

@@ -41,6 +41,7 @@ import {
   hitDrcMarker,
   hitFreeHole,
   hitFreePad,
+  hitMeasurement,
   hitOverlayText,
   hitPad,
   hitPlacement,
@@ -72,6 +73,14 @@ import {
   traceIntersectsRect,
   viaContainedInRect,
   viaIntersectsRect,
+  measurementContainedInRect,
+  measurementIntersectsRect,
+  freeHoleContainedInRect,
+  freeHoleIntersectsRect,
+  freePadContainedInRect,
+  freePadIntersectsRect,
+  overlayTextContainedInRect,
+  overlayTextIntersectsRect,
 } from "./pcb-rect-hit";
 import {
   clonePcbSelection,
@@ -82,6 +91,7 @@ import {
   toggleFreeHole,
   toggleFreePad,
   toggleOverlayText,
+  toggleMeasurement,
   pcbSelectionCount,
   type PcbSelection,
 } from "./pcb-selection";
@@ -1423,6 +1433,10 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
       const placementIds = new Set(baseSelection.placementIds);
       const traceIds = new Set(baseSelection.traceIds);
       const viaIds = new Set(baseSelection.viaIds);
+      const freeHoleIds = new Set(baseSelection.freeHoleIds ?? []);
+      const freePadIds = new Set(baseSelection.freePadIds ?? []);
+      const overlayTextIds = new Set(baseSelection.overlayTextIds ?? []);
+      const measurementIds = new Set(baseSelection.measurementIds ?? []);
       if (!sf || sf.pads || sf.placements) {
         for (const p of visiblePlacements) {
           if (placementHit(p, rect)) placementIds.add(p.id);
@@ -1445,7 +1459,41 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
           if (viaHit(v, rect)) viaIds.add(v.id);
         }
       }
-      return { placementIds, traceIds, viaIds };
+      const freeHoleHit =
+        mode === "window" ? freeHoleContainedInRect : freeHoleIntersectsRect;
+      const freePadHit =
+        mode === "window" ? freePadContainedInRect : freePadIntersectsRect;
+      const overlayTextHit =
+        mode === "window"
+          ? overlayTextContainedInRect
+          : overlayTextIntersectsRect;
+      for (const hole of freeHolesRef.current) {
+        if (freeHoleHit(hole, rect)) freeHoleIds.add(hole.id);
+      }
+      for (const pad of freePadsRef.current) {
+        if (freePadHit(pad, rect)) freePadIds.add(pad.id);
+      }
+      for (const text of overlayTextsRef.current) {
+        if (overlayTextHit(text, rect)) overlayTextIds.add(text.id);
+      }
+      for (const measurement of workspace.projection?.board.measurements ??
+        []) {
+        if (
+          (mode === "window"
+            ? measurementContainedInRect
+            : measurementIntersectsRect)(measurement, rect)
+        )
+          measurementIds.add(measurement.id);
+      }
+      return {
+        placementIds,
+        traceIds,
+        viaIds,
+        freeHoleIds,
+        freePadIds,
+        overlayTextIds,
+        measurementIds,
+      };
     },
   });
 
@@ -3069,6 +3117,28 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         const shift = event.modifiers.shift;
         const current = selectionRef.current;
         const sf = selectionFilterRef.current;
+        const measurementHit = hitMeasurement(
+          workspace.projection?.board.measurements ?? [],
+          cursor,
+        );
+        if (measurementHit) {
+          setCommittedDragOverride(null);
+          setDragSession(null);
+          setSelection(
+            shift
+              ? toggleMeasurement(current, measurementHit.id)
+              : {
+                  placementIds: new Set(),
+                  traceIds: new Set(),
+                  viaIds: new Set(),
+                  freeHoleIds: new Set(),
+                  freePadIds: new Set(),
+                  overlayTextIds: new Set(),
+                  measurementIds: new Set([measurementHit.id]),
+                },
+          );
+          return;
+        }
         const traceHit =
           sf.traces && isCopperLayerVisible(visibleLayers, activeCopperLayer)
             ? hitTrace(tracesRef.current, cursor, activeCopperLayer)
@@ -4768,13 +4838,15 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         const freeHoleIds = [...(selection.freeHoleIds ?? [])];
         const freePadIds = [...(selection.freePadIds ?? [])];
         const overlayTextIds = [...(selection.overlayTextIds ?? [])];
+        const measurementIds = [...(selection.measurementIds ?? [])];
         if (
           placementIds.length === 0 &&
           traceIds.length === 0 &&
           viaIds.length === 0 &&
           freeHoleIds.length === 0 &&
           freePadIds.length === 0 &&
-          overlayTextIds.length === 0
+          overlayTextIds.length === 0 &&
+          measurementIds.length === 0
         ) {
           return;
         }
@@ -4788,6 +4860,8 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         for (const id of freePadIds) tasks.push(workspace.deleteFreePad(id));
         for (const id of overlayTextIds)
           tasks.push(workspace.deleteOverlayText(id));
+        for (const id of measurementIds)
+          tasks.push(workspace.deleteMeasurement(id));
         void Promise.allSettled(tasks).then(() => {
           setSelection(emptyPcbSelection());
         });

@@ -1475,10 +1475,10 @@ interface PcbSceneProps {
   bundlePreview?: {
     layer: PcbCopperLayerId;
     widthMm: number;
-    okPolylinesNm: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>;
-    degradedPolylinesNm: ReadonlyArray<
+    okPolylinesNm: ReadonlyArray<
       ReadonlyArray<{ x: number; y: number }>
     >;
+    degradedPolylinesNm: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>;
   } | null;
   /** Collected bundle pads (mm) — amber rings mark them in-scene. */
   bundlePadsMm?: ReadonlyArray<{ id: string; x: number; y: number }> | null;
@@ -2347,6 +2347,7 @@ export function PcbScene({
             end={item.endMm}
             showDeltas={item.showDeltas}
             counterMirror={mirror}
+            selected={selection.measurementIds?.has(item.id) ?? false}
           />
         ))}
         {measurement ? (

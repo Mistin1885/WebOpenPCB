@@ -700,6 +700,25 @@ export function usePcbWorkspace(params: {
     [dispatchCommand, refresh, refreshHistory],
   );
 
+  const deleteMeasurement = useCallback(
+    async (measurementId: string) => {
+      setError(null);
+      try {
+        await dispatchCommand({
+          type: "pcb_delete_measurement",
+          measurementId,
+        });
+        await refresh();
+        await refreshHistory();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Delete measurement failed",
+        );
+      }
+    },
+    [dispatchCommand, refresh, refreshHistory],
+  );
+
   /** Drop a free pad at `centerMm`. v1 ships SMD rect 1.5×1.0 mm by default. */
   const addFreePad = useCallback(
     async (
@@ -985,6 +1004,7 @@ export function usePcbWorkspace(params: {
     updateTraceGeometry,
     addFreeHole,
     addMeasurement,
+    deleteMeasurement,
     deleteFreeHole,
     updateFreeHole,
     addFreePad,

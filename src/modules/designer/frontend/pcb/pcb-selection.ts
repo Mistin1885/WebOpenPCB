@@ -11,6 +11,7 @@ export interface PcbSelection {
   readonly freeHoleIds?: ReadonlySet<string>;
   readonly freePadIds?: ReadonlySet<string>;
   readonly overlayTextIds?: ReadonlySet<string>;
+  readonly measurementIds?: ReadonlySet<string>;
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set<string>();
@@ -27,6 +28,10 @@ function textIds(s: PcbSelection): ReadonlySet<string> {
   return s.overlayTextIds ?? EMPTY_SET;
 }
 
+function measurementIds(s: PcbSelection): ReadonlySet<string> {
+  return s.measurementIds ?? EMPTY_SET;
+}
+
 export function emptyPcbSelection(): PcbSelection {
   return {
     placementIds: new Set<string>(),
@@ -35,6 +40,7 @@ export function emptyPcbSelection(): PcbSelection {
     freeHoleIds: new Set<string>(),
     freePadIds: new Set<string>(),
     overlayTextIds: new Set<string>(),
+    measurementIds: new Set<string>(),
   };
 }
 
@@ -46,6 +52,7 @@ export function clonePcbSelection(s: PcbSelection): PcbSelection {
     freeHoleIds: new Set(holeIds(s)),
     freePadIds: new Set(padIds(s)),
     overlayTextIds: new Set(textIds(s)),
+    measurementIds: new Set(measurementIds(s)),
   };
 }
 
@@ -57,7 +64,8 @@ export function pcbSelectionCount(s: PcbSelection): number {
     s.viaIds.size +
     holeIds(s).size +
     padIds(s).size +
-    textIds(s).size
+    textIds(s).size +
+    measurementIds(s).size
   );
 }
 
@@ -68,7 +76,8 @@ export function isPcbSelectionEmpty(s: PcbSelection): boolean {
     s.viaIds.size === 0 &&
     holeIds(s).size === 0 &&
     padIds(s).size === 0 &&
-    textIds(s).size === 0
+    textIds(s).size === 0 &&
+    measurementIds(s).size === 0
   );
 }
 
@@ -83,6 +92,7 @@ export function pcbSelectionUnion(
     freeHoleIds: new Set([...holeIds(a), ...holeIds(b)]),
     freePadIds: new Set([...padIds(a), ...padIds(b)]),
     overlayTextIds: new Set([...textIds(a), ...textIds(b)]),
+    measurementIds: new Set([...measurementIds(a), ...measurementIds(b)]),
   };
 }
 
@@ -126,4 +136,11 @@ export function toggleOverlayText(s: PcbSelection, id: string): PcbSelection {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   return { ...s, overlayTextIds: next };
+}
+
+export function toggleMeasurement(s: PcbSelection, id: string): PcbSelection {
+  const next = new Set(measurementIds(s));
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return { ...s, measurementIds: next };
 }
