@@ -123,6 +123,9 @@ describe("designer PCB view-state persistence", () => {
     expect(viewState?.copperFillPourNetIds).toEqual({});
     expect(viewState?.perLayerOpacity).toEqual({});
     expect(viewState?.ratsnestVisible).toBe(true);
+    expect(viewState?.gridVisible).toBe(true);
+    expect(viewState?.gridSizeMm).toBe(1);
+    expect(viewState?.gridSnapEnabled).toBe(true);
   });
 
   test("pcb_set_view_state persists a partial patch and round-trips through projection", async () => {
@@ -140,6 +143,9 @@ describe("designer PCB view-state persistence", () => {
           copperFillPourNetIds: { "F.Cu": "net-a", "B.Cu": null },
           layerPreset: "top-side",
           ratsnestVisible: false,
+          gridVisible: false,
+          gridSizeMm: 0.25,
+          gridSnapEnabled: false,
         },
       }),
     );
@@ -161,6 +167,9 @@ describe("designer PCB view-state persistence", () => {
     expect(viewState?.copperFillPadConnection).toBe("solid");
     expect(viewState?.layerPreset).toBe("top-side");
     expect(viewState?.ratsnestVisible).toBe(false);
+    expect(viewState?.gridVisible).toBe(false);
+    expect(viewState?.gridSizeMm).toBe(0.25);
+    expect(viewState?.gridSnapEnabled).toBe(false);
   });
 
   test("DRC waivers + ignored rule-classes persist through pcb_set_view_state", async () => {

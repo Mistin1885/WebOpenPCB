@@ -25,6 +25,9 @@ export function createDefaultPcbViewState(): PcbViewState {
     perLayerOpacity: {},
     layerPreset: "custom",
     ratsnestVisible: true,
+    gridVisible: true,
+    gridSizeMm: 1,
+    gridSnapEnabled: true,
     drcIgnoredRuleClasses: [],
     drcWaivedViolationIds: [],
   };

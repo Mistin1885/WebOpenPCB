@@ -41,6 +41,7 @@ import {
   hitDrcMarker,
   hitFreeHole,
   hitFreePad,
+  hitMeasurement,
   hitOverlayText,
   hitPad,
   hitPlacement,
@@ -72,6 +73,14 @@ import {
   traceIntersectsRect,
   viaContainedInRect,
   viaIntersectsRect,
+  measurementContainedInRect,
+  measurementIntersectsRect,
+  freeHoleContainedInRect,
+  freeHoleIntersectsRect,
+  freePadContainedInRect,
+  freePadIntersectsRect,
+  overlayTextContainedInRect,
+  overlayTextIntersectsRect,
 } from "./pcb-rect-hit";
 import {
   clonePcbSelection,
@@ -82,6 +91,7 @@ import {
   toggleFreeHole,
   toggleFreePad,
   toggleOverlayText,
+  toggleMeasurement,
   pcbSelectionCount,
   type PcbSelection,
 } from "./pcb-selection";
@@ -100,6 +110,7 @@ import {
   type AutoroutePreviewTrace,
   type PcbCameraControls,
 } from "./PcbScene";
+import { RightButtonPan } from "./RightButtonPan";
 import type { ViewportState } from "../types";
 import { PcbTopToolbar } from "./PcbTopToolbar";
 import { PcbExportDialog } from "./PcbExportDialog";
@@ -203,6 +214,13 @@ import {
 } from "./drc/drc-labels";
 import { usePcbViewStore } from "./pcb-view-store";
 import {
+  hitPrimitiveResizeHandle,
+  resizeFreePrimitive,
+  type FreePrimitiveResizeResult,
+  type FreePrimitiveResizeTarget,
+  type PrimitiveResizeCorner,
+} from "./pcb-free-primitive-resize";
+import {
   DEFAULT_PCB_ZOOM,
   PCB_GRID_MM,
 } from "../../../../shared/frontend/canvas/defaults";
@@ -265,13 +283,20 @@ import {
 
 const NM_PER_MM = 1_000_000;
 
-function snapMm(value: number, gridEnabled: boolean): number {
+function snapMm(value: number, gridEnabled: boolean, gridSizeMm: number): number {
   if (!gridEnabled) return value;
-  return Math.round(value / PCB_GRID_MM) * PCB_GRID_MM;
+  return Math.round(value / gridSizeMm) * gridSizeMm;
 }
 
-function snapPointMm(p: PcbPointMm, gridEnabled: boolean): PcbPointMm {
-  return { x: snapMm(p.x, gridEnabled), y: snapMm(p.y, gridEnabled) };
+function snapPointMm(
+  p: PcbPointMm,
+  gridEnabled: boolean,
+  gridSizeMm: number,
+): PcbPointMm {
+  return {
+    x: snapMm(p.x, gridEnabled, gridSizeMm),
+    y: snapMm(p.y, gridEnabled, gridSizeMm),
+  };
 }
 
 function pointMmToNm(p: PcbPointMm): PointNm {
@@ -343,6 +368,13 @@ interface FreePrimitiveDragSession {
   moved: boolean;
 }
 
+interface FreePrimitiveResizeSession {
+  target: FreePrimitiveResizeTarget;
+  corner: PrimitiveResizeCorner;
+  current: FreePrimitiveResizeResult;
+  moved: boolean;
+}
+
 interface BoardResizeSession {
   handle: BoardHandle;
   initialRect: PcbBoardOutline;
@@ -368,7 +400,6 @@ interface PcbCanvasProps {
   backendURL?: string | null;
   moduleId: string;
   designId: string | null;
-  gridVisible?: boolean;
   /** Login-only cloud auth headers (bearer) for the auto-layout service. */
   cloudHeaders?: CloudHeadersProvider;
   /** Logged in + cloud configured → show the unified Auto-Layout button. */
@@ -513,13 +544,24 @@ function SketchHintStrip({ active }: { active: boolean }): ReactElement {
 }
 
 export function PcbCanvas(props: PcbCanvasProps): ReactElement {
-  const gridEnabled = props.gridVisible ?? false;
+  const gridVisible = usePcbViewStore(
+    (state) => state.viewState.gridVisible ?? true,
+  );
+  const gridSnapEnabled = usePcbViewStore(
+    (state) => state.viewState.gridSnapEnabled ?? true,
+  );
+  const gridSizeMm = usePcbViewStore(
+    (state) => state.viewState.gridSizeMm ?? PCB_GRID_MM,
+  );
   // Stable identities — several per-pointer-move memos (bundlePreview, …)
   // list these as deps; plain arrows would invalidate them on EVERY render.
-  const snap = useCallback((v: number) => snapMm(v, gridEnabled), [gridEnabled]);
+  const snap = useCallback(
+    (v: number) => snapMm(v, gridSnapEnabled, gridSizeMm),
+    [gridSizeMm, gridSnapEnabled],
+  );
   const snapPoint = useCallback(
-    (p: PcbPointMm) => snapPointMm(p, gridEnabled),
-    [gridEnabled],
+    (p: PcbPointMm) => snapPointMm(p, gridSnapEnabled, gridSizeMm),
+    [gridSizeMm, gridSnapEnabled],
   );
 
   const workspace = usePcbWorkspace({
@@ -591,6 +633,13 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
     null,
   );
   freePrimitiveDragSessionRef.current = freePrimitiveDragSession;
+  const [freePrimitiveResizeSession, setFreePrimitiveResizeSession] =
+    useState<FreePrimitiveResizeSession | null>(null);
+  const freePrimitiveResizeSessionRef =
+    useRef<FreePrimitiveResizeSession | null>(null);
+  freePrimitiveResizeSessionRef.current = freePrimitiveResizeSession;
+  const [committedFreePrimitiveResize, setCommittedFreePrimitiveResize] =
+    useState<FreePrimitiveResizeResult | null>(null);
   const [boardResizeSession, setBoardResizeSession] =
     useState<BoardResizeSession | null>(null);
   const boardResizeSessionRef = useRef<BoardResizeSession | null>(null);
@@ -1081,6 +1130,27 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
     useRef<ReadonlyArray<PcbOverlayText>>(visibleOverlayTexts);
   overlayTextsRef.current = visibleOverlayTexts;
 
+  const selectedResizeTarget = useMemo<FreePrimitiveResizeTarget | null>(() => {
+    const projection = workspace.projection;
+    if (!projection || pcbSelectionCount(selection) !== 1) return null;
+    const holeId = [...(selection.freeHoleIds ?? [])][0];
+    if (holeId) {
+      const value = projection.freeHoles.find((hole) => hole.id === holeId);
+      return value && !value.lockedAt ? { kind: "freeHole", value } : null;
+    }
+    const padId = [...(selection.freePadIds ?? [])][0];
+    if (padId) {
+      const value = projection.freePads.find((pad) => pad.id === padId);
+      return value && !value.lockedAt ? { kind: "freePad", value } : null;
+    }
+    const textId = [...(selection.overlayTextIds ?? [])][0];
+    if (textId) {
+      const value = projection.overlayTexts.find((text) => text.id === textId);
+      return value && !value.lockedAt ? { kind: "overlayText", value } : null;
+    }
+    return null;
+  }, [selection, workspace.projection]);
+
   const viasVisible = areViasVisible(visibleLayers);
 
   useEffect(() => {
@@ -1324,13 +1394,13 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         }
       }
       const pointMm = snapPoint(cursor);
-      return gridEnabled
+      return gridSnapEnabled
         ? { kind: "grid", pointMm }
         : { kind: "cursor", pointMm };
     },
     [
       activeCopperLayer,
-      gridEnabled,
+      gridSnapEnabled,
       snapPoint,
       visiblePlacements,
       workspace.projection,
@@ -1363,6 +1433,10 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
       const placementIds = new Set(baseSelection.placementIds);
       const traceIds = new Set(baseSelection.traceIds);
       const viaIds = new Set(baseSelection.viaIds);
+      const freeHoleIds = new Set(baseSelection.freeHoleIds ?? []);
+      const freePadIds = new Set(baseSelection.freePadIds ?? []);
+      const overlayTextIds = new Set(baseSelection.overlayTextIds ?? []);
+      const measurementIds = new Set(baseSelection.measurementIds ?? []);
       if (!sf || sf.pads || sf.placements) {
         for (const p of visiblePlacements) {
           if (placementHit(p, rect)) placementIds.add(p.id);
@@ -1385,7 +1459,41 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
           if (viaHit(v, rect)) viaIds.add(v.id);
         }
       }
-      return { placementIds, traceIds, viaIds };
+      const freeHoleHit =
+        mode === "window" ? freeHoleContainedInRect : freeHoleIntersectsRect;
+      const freePadHit =
+        mode === "window" ? freePadContainedInRect : freePadIntersectsRect;
+      const overlayTextHit =
+        mode === "window"
+          ? overlayTextContainedInRect
+          : overlayTextIntersectsRect;
+      for (const hole of freeHolesRef.current) {
+        if (freeHoleHit(hole, rect)) freeHoleIds.add(hole.id);
+      }
+      for (const pad of freePadsRef.current) {
+        if (freePadHit(pad, rect)) freePadIds.add(pad.id);
+      }
+      for (const text of overlayTextsRef.current) {
+        if (overlayTextHit(text, rect)) overlayTextIds.add(text.id);
+      }
+      for (const measurement of workspace.projection?.board.measurements ??
+        []) {
+        if (
+          (mode === "window"
+            ? measurementContainedInRect
+            : measurementIntersectsRect)(measurement, rect)
+        )
+          measurementIds.add(measurement.id);
+      }
+      return {
+        placementIds,
+        traceIds,
+        viaIds,
+        freeHoleIds,
+        freePadIds,
+        overlayTextIds,
+        measurementIds,
+      };
     },
   });
 
@@ -2550,10 +2658,17 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         }
 
         if (toolMode === "measure") {
-          dispatchMeasure({
-            kind: "click",
-            anchor: resolveMeasureAnchor(cursor),
-          });
+          const anchor = resolveMeasureAnchor(cursor);
+          if (measureState.kind === "measuring") {
+            void workspace.addMeasurement(
+              measureState.start.pointMm,
+              anchor.pointMm,
+              measureShowDeltas,
+            );
+            dispatchMeasure({ kind: "clear" });
+          } else {
+            dispatchMeasure({ kind: "click", anchor });
+          }
           setSelection(emptyPcbSelection());
           setDragSession(null);
           setFreePrimitiveDragSession(null);
@@ -2920,6 +3035,28 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
           }
         }
 
+        // A selected free primitive exposes four corner handles. Hit-test the
+        // handles before the primitive body so pressing a handle starts resize
+        // instead of the existing move drag.
+        if (toolMode === "select" && selectedResizeTarget) {
+          const corner = hitPrimitiveResizeHandle(
+            selectedResizeTarget,
+            cursor,
+            Math.max(0.25, 8 / drcZoomRef.current),
+          );
+          if (corner) {
+            setCommittedFreePrimitiveResize(null);
+            setFreePrimitiveDragSession(null);
+            setFreePrimitiveResizeSession({
+              target: selectedResizeTarget,
+              corner,
+              current: selectedResizeTarget,
+              moved: false,
+            });
+            return;
+          }
+        }
+
         // Alt+click — open the disambiguation popup at the cursor with every
         // primitive under the pointer (spec §4.4 / research §4.4). Plain
         // click still uses the first-match-wins flow below.
@@ -2980,6 +3117,28 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         const shift = event.modifiers.shift;
         const current = selectionRef.current;
         const sf = selectionFilterRef.current;
+        const measurementHit = hitMeasurement(
+          workspace.projection?.board.measurements ?? [],
+          cursor,
+        );
+        if (measurementHit) {
+          setCommittedDragOverride(null);
+          setDragSession(null);
+          setSelection(
+            shift
+              ? toggleMeasurement(current, measurementHit.id)
+              : {
+                  placementIds: new Set(),
+                  traceIds: new Set(),
+                  viaIds: new Set(),
+                  freeHoleIds: new Set(),
+                  freePadIds: new Set(),
+                  overlayTextIds: new Set(),
+                  measurementIds: new Set([measurementHit.id]),
+                },
+          );
+          return;
+        }
         const traceHit =
           sf.traces && isCopperLayerVisible(visibleLayers, activeCopperLayer)
             ? hitTrace(tracesRef.current, cursor, activeCopperLayer)
@@ -3190,6 +3349,22 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         setCursorClientPx({ x: event.screenPoint.x, y: event.screenPoint.y });
         setMeasureShowDeltas(event.modifiers.shift);
 
+        if (freePrimitiveResizeSessionRef.current) {
+          setFreePrimitiveResizeSession((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              current: resizeFreePrimitive(
+                prev.target,
+                prev.corner,
+                snapPoint(cursor),
+              ),
+              moved: true,
+            };
+          });
+          return;
+        }
+
         // Board resize drag in flight — move the grabbed edge(s), opposite edge
         // fixed. Suppresses all hover/selection feedback while resizing.
         if (boardResizeSessionRef.current) {
@@ -3240,6 +3415,20 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
 
         // Hover affordance for the bbox resize grips (parametric outlines only;
         // editable outlines use vertex grips, not axis-resize cursors).
+        let nextResizeCursor: string | null = null;
+        if (toolMode === "select" && selectedResizeTarget) {
+          const corner = hitPrimitiveResizeHandle(
+            selectedResizeTarget,
+            cursor,
+            Math.max(0.25, 8 / drcZoomRef.current),
+          );
+          if (corner) {
+            nextResizeCursor =
+              corner === "nw" || corner === "se"
+                ? "nwse-resize"
+                : "nesw-resize";
+          }
+        }
         if (boardDimModeRef.current && toolMode === "select") {
           const outline = workspace.projection?.board.outline;
           if (outline && !isEditableOutline(outline)) {
@@ -3248,12 +3437,11 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
               cursor,
               BOARD_HANDLE_TOLERANCE_MM,
             );
-            setBoardHandleCursor(handle ? handleCursor(handle) : null);
-          } else if (boardHandleCursor !== null) {
-            setBoardHandleCursor(null);
+            if (handle) nextResizeCursor = handleCursor(handle);
           }
-        } else if (boardHandleCursor !== null) {
-          setBoardHandleCursor(null);
+        }
+        if (nextResizeCursor !== boardHandleCursor) {
+          setBoardHandleCursor(nextResizeCursor);
         }
 
         if (toolMode === "measure") {
@@ -3348,6 +3536,38 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         }
       },
       onPointerUp() {
+        const primitiveResize = freePrimitiveResizeSessionRef.current;
+        if (primitiveResize) {
+          setFreePrimitiveResizeSession(null);
+          if (primitiveResize.moved) {
+            const result = primitiveResize.current;
+            setCommittedFreePrimitiveResize(result);
+            const clearPreview = () => setCommittedFreePrimitiveResize(null);
+            if (result.kind === "freeHole") {
+              void workspace
+                .updateFreeHole(result.value.id, {
+                  drillMm: result.value.drillMm,
+                })
+                .finally(clearPreview);
+            } else if (result.kind === "freePad") {
+              void workspace
+                .updateFreePad(result.value.id, {
+                  centerMm: result.value.centerMm,
+                  widthMm: result.value.widthMm,
+                  heightMm: result.value.heightMm,
+                })
+                .finally(clearPreview);
+            } else {
+              void workspace
+                .updateOverlayText(result.value.id, {
+                  positionMm: result.value.positionMm,
+                  fontSizeMm: result.value.fontSizeMm,
+                })
+                .finally(clearPreview);
+            }
+          }
+          return;
+        }
         // Commit a board resize. The command writes ONLY the outline — no
         // placement/trace/via position is ever recomputed (non-destructive).
         const resize = boardResizeSessionRef.current;
@@ -3953,6 +4173,8 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
     findNearestPadOnNet,
     finishRoute,
     marquee,
+    measureShowDeltas,
+    measureState,
     padToNet,
     pendingRouteGeometry,
     previewActive,
@@ -3969,6 +4191,7 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
     setPlacePreviewPositions,
     routeState,
     selection,
+    selectedResizeTarget,
     setActiveCopperLayer,
     setCursorMm,
     snapPoint,
@@ -4615,13 +4838,15 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         const freeHoleIds = [...(selection.freeHoleIds ?? [])];
         const freePadIds = [...(selection.freePadIds ?? [])];
         const overlayTextIds = [...(selection.overlayTextIds ?? [])];
+        const measurementIds = [...(selection.measurementIds ?? [])];
         if (
           placementIds.length === 0 &&
           traceIds.length === 0 &&
           viaIds.length === 0 &&
           freeHoleIds.length === 0 &&
           freePadIds.length === 0 &&
-          overlayTextIds.length === 0
+          overlayTextIds.length === 0 &&
+          measurementIds.length === 0
         ) {
           return;
         }
@@ -4635,6 +4860,8 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
         for (const id of freePadIds) tasks.push(workspace.deleteFreePad(id));
         for (const id of overlayTextIds)
           tasks.push(workspace.deleteOverlayText(id));
+        for (const id of measurementIds)
+          tasks.push(workspace.deleteMeasurement(id));
         void Promise.allSettled(tasks).then(() => {
           setSelection(emptyPcbSelection());
         });
@@ -4734,6 +4961,19 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
       return { overlayTexts: new Map([[freePrimitiveDragSession.id, pos]]) };
     }
   }, [freePrimitiveDragSession]);
+
+  const freePrimitiveResizeOverrides = useMemo(() => {
+    const result =
+      freePrimitiveResizeSession?.current ?? committedFreePrimitiveResize;
+    if (!result) return null;
+    if (result.kind === "freeHole") {
+      return { freeHoles: new Map([[result.value.id, result.value]]) };
+    }
+    if (result.kind === "freePad") {
+      return { freePads: new Map([[result.value.id, result.value]]) };
+    }
+    return { overlayTexts: new Map([[result.value.id, result.value]]) };
+  }, [committedFreePrimitiveResize, freePrimitiveResizeSession]);
 
   // Live route preview: build path through committed anchors + cursor.
   // With pcb.routeWalkaround on, a colliding head is re-shaped around the hit
@@ -5155,13 +5395,6 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
   );
 
   const sceneMeasurement = useMemo(() => {
-    if (measureState.kind === "locked") {
-      return {
-        start: measureState.start.pointMm,
-        end: measureState.end.pointMm,
-        showDeltas: measureShowDeltas,
-      };
-    }
     if (measureState.kind === "measuring" && cursorMm) {
       return {
         start: measureState.start.pointMm,
@@ -5239,6 +5472,10 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
           interactionHandler={handler}
           interactionCoordinateTransform={interactionCoordinateTransform}
         >
+          <RightButtonPan
+            interactionHandler={handler}
+            interactionCoordinateTransform={interactionCoordinateTransform}
+          />
           <PcbScene
             projection={workspace.projection}
             selection={sceneSelection}
@@ -5263,6 +5500,9 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
             sketchPreview={sketchPreview}
             dragOverride={dragOverride}
             freePrimitiveDragOverrides={freePrimitiveDragOverrides}
+            freePrimitiveResizeOverrides={freePrimitiveResizeOverrides}
+            gridVisible={gridVisible}
+            gridSizeMm={gridSizeMm}
             highlightedNetId={workspace.highlightedNetId}
             ratsnestVisible={workspace.ratsnestVisible}
             viewSide={workspace.viewSide}
@@ -5290,6 +5530,7 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
             copperFillLayers={workspace.copperFillLayers}
             marqueeOverlay={sceneMarqueeOverlay}
             measurement={sceneMeasurement}
+            measurements={workspace.projection.board.measurements ?? []}
             snapTarget={snapTarget}
             alignmentGuides={alignmentGuides}
             alignmentSpacing={alignmentSpacing}
@@ -5968,6 +6209,18 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
               onSetVisibleLayers={(layers) =>
                 void workspace.setVisibleLayers(layers)
               }
+              gridVisible={gridVisible}
+              onToggleGridVisible={() =>
+                usePcbViewStore.getState().toggleGridVisible()
+              }
+              gridSizeMm={gridSizeMm}
+              onSetGridSizeMm={(sizeMm) =>
+                usePcbViewStore.getState().setGridSizeMm(sizeMm)
+              }
+              gridSnapEnabled={gridSnapEnabled}
+              onToggleGridSnap={() =>
+                usePcbViewStore.getState().toggleGridSnapEnabled()
+              }
               layerCount={workspace.projection.board.layerCount}
               displayMode={workspace.displayMode}
               onSetDisplayMode={workspace.setDisplayMode}
@@ -5985,8 +6238,6 @@ export function PcbCanvas(props: PcbCanvasProps): ReactElement {
                 // see `pcb-projection.ts`); no per-layer net/connection picker.
               }}
               onCleanupPourTraces={() => void workspace.cleanupPourTraces()}
-              viewSide={workspace.viewSide}
-              onToggleViewSide={handleToggleViewSide}
               onSelectLayerPreset={(preset) => {
                 if (preset === "custom") return;
                 // Resolve the preset spec, then apply via workspace methods

@@ -15,6 +15,7 @@ import type {
   PcbFreeHole,
   PcbFreePad,
   PcbLayerId,
+  PcbMeasurement,
   PcbOverlayText,
   PcbPlacedPart,
   PcbPointMm,
@@ -35,7 +36,6 @@ import {
   placementContributingLayers,
 } from "../../../../shared/frontend/canvas/scene/layer-side";
 import { EDAText } from "../../../../shared/frontend/canvas/primitives/EDAText";
-import { GridShader } from "../../../../shared/frontend/canvas/primitives/GridShader";
 import {
   PCB_LAYER_COLORS,
   RENDER_ORDER,
@@ -79,6 +79,8 @@ import type {
 } from "./guides/guide-types";
 import { MeasureOverlayLayer } from "./layers/MeasureOverlayLayer";
 import { usePcbViewStore } from "./pcb-view-store";
+import { PcbAdaptiveGrid } from "./PcbAdaptiveGrid";
+import { resolvePcbGridContrast } from "./pcb-grid-contrast";
 import { SelectionRectOverlay } from "../../../../shared/frontend/canvas/selection";
 import {
   areViasVisible,
@@ -1395,6 +1397,15 @@ interface PcbSceneProps {
     freePads?: ReadonlyMap<string, PcbPointMm>;
     overlayTexts?: ReadonlyMap<string, PcbPointMm>;
   } | null;
+  /** Live corner-resize preview values for free primitives. */
+  freePrimitiveResizeOverrides?: {
+    freeHoles?: ReadonlyMap<string, PcbFreeHole>;
+    freePads?: ReadonlyMap<string, PcbFreePad>;
+    overlayTexts?: ReadonlyMap<string, PcbOverlayText>;
+  } | null;
+  /** Whether the board grid is drawn. */
+  gridVisible?: boolean;
+  gridSizeMm?: number;
   highlightedNetId?: string | null;
   ratsnestVisible?: boolean;
   /** Board view orientation. `"bottom"` mirrors the scene horizontally. */
@@ -1464,10 +1475,10 @@ interface PcbSceneProps {
   bundlePreview?: {
     layer: PcbCopperLayerId;
     widthMm: number;
-    okPolylinesNm: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>;
-    degradedPolylinesNm: ReadonlyArray<
+    okPolylinesNm: ReadonlyArray<
       ReadonlyArray<{ x: number; y: number }>
     >;
+    degradedPolylinesNm: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>;
   } | null;
   /** Collected bundle pads (mm) — amber rings mark them in-scene. */
   bundlePadsMm?: ReadonlyArray<{ id: string; x: number; y: number }> | null;
@@ -1507,6 +1518,7 @@ interface PcbSceneProps {
     end: PcbPointMm;
     showDeltas: boolean;
   } | null;
+  measurements?: ReadonlyArray<PcbMeasurement>;
   /**
    * Active snap target. Rendered as a color-coded ring at the resolved
    * point so the user can see where a click would land. The snap engine
@@ -1538,6 +1550,9 @@ export function PcbScene({
   sketchPreview = null,
   dragOverride,
   freePrimitiveDragOverrides,
+  freePrimitiveResizeOverrides,
+  gridVisible = true,
+  gridSizeMm = 1,
   highlightedNetId,
   ratsnestVisible = true,
   viewSide = "top",
@@ -1560,6 +1575,7 @@ export function PcbScene({
   copperFillLayers = [],
   marqueeOverlay = null,
   measurement = null,
+  measurements = [],
   snapTarget = null,
   alignmentGuides = [],
   alignmentSpacing = [],
@@ -1569,6 +1585,7 @@ export function PcbScene({
   onCameraReady,
 }: PcbSceneProps): ReactElement {
   const invalidate = useThree((state) => state.invalidate);
+  const { theme } = useCanvasTheme();
 
   useEffect(() => {
     invalidate();
@@ -1581,6 +1598,9 @@ export function PcbScene({
     sketchPreview,
     dragOverride,
     freePrimitiveDragOverrides,
+    freePrimitiveResizeOverrides,
+    gridVisible,
+    gridSizeMm,
     highlightedNetId,
     ratsnestVisible,
     viewSide,
@@ -1604,6 +1624,19 @@ export function PcbScene({
   const visibleLayers = useMemo(
     () => visibleLayerSet(projection.board.visibleLayers),
     [projection.board.visibleLayers],
+  );
+  const gridContrast = useMemo(
+    () =>
+      resolvePcbGridContrast([
+        theme.pcbCanvas.background,
+        theme.pcbCanvas.boardFill,
+        ...projection.board.visibleLayers.map(layerColor),
+      ]),
+    [
+      projection.board.visibleLayers,
+      theme.pcbCanvas.background,
+      theme.pcbCanvas.boardFill,
+    ],
   );
   const renderPlacements = useMemo<ReadonlyArray<PcbPlacedPart>>(() => {
     // In preview, affected components already carry their proposed pose in
@@ -1630,14 +1663,26 @@ export function PcbScene({
   const selectedFreeHoles = useMemo(() => {
     const ids = selection?.freeHoleIds;
     if (!ids || ids.size === 0) return [];
-    return projection.freeHoles.filter((h) => ids.has(h.id));
-  }, [projection.freeHoles, selection?.freeHoleIds]);
+    return projection.freeHoles
+      .filter((h) => ids.has(h.id))
+      .map((h) => freePrimitiveResizeOverrides?.freeHoles?.get(h.id) ?? h);
+  }, [
+    projection.freeHoles,
+    selection?.freeHoleIds,
+    freePrimitiveResizeOverrides?.freeHoles,
+  ]);
 
   const selectedFreePads = useMemo(() => {
     const ids = selection?.freePadIds;
     if (!ids || ids.size === 0) return [];
-    return projection.freePads.filter((p) => ids.has(p.id));
-  }, [projection.freePads, selection?.freePadIds]);
+    return projection.freePads
+      .filter((p) => ids.has(p.id))
+      .map((p) => freePrimitiveResizeOverrides?.freePads?.get(p.id) ?? p);
+  }, [
+    projection.freePads,
+    selection?.freePadIds,
+    freePrimitiveResizeOverrides?.freePads,
+  ]);
 
   const selectedOverlayTexts = useMemo(() => {
     const ids = selection?.overlayTextIds;
@@ -1646,27 +1691,57 @@ export function PcbScene({
     // not leave an orphan selection outline behind.
     return visibleOverlayEntities(
       visibleLayers,
-      projection.overlayTexts.filter((t) => ids.has(t.id)),
+      projection.overlayTexts
+        .filter((t) => ids.has(t.id))
+        .map(
+          (t) =>
+            freePrimitiveResizeOverrides?.overlayTexts?.get(t.id) ?? t,
+        ),
     );
-  }, [projection.overlayTexts, selection?.overlayTextIds, visibleLayers]);
+  }, [
+    projection.overlayTexts,
+    selection?.overlayTextIds,
+    visibleLayers,
+    freePrimitiveResizeOverrides?.overlayTexts,
+  ]);
 
   const renderFreeHoles = useMemo(() => {
-    const overrides = freePrimitiveDragOverrides?.freeHoles;
-    if (!overrides || overrides.size === 0) return projection.freeHoles;
+    const dragOverrides = freePrimitiveDragOverrides?.freeHoles;
+    const resizeOverrides = freePrimitiveResizeOverrides?.freeHoles;
+    if (
+      (!dragOverrides || dragOverrides.size === 0) &&
+      (!resizeOverrides || resizeOverrides.size === 0)
+    )
+      return projection.freeHoles;
     return projection.freeHoles.map((h) => {
-      const override = overrides.get(h.id);
-      return override ? { ...h, centerMm: override } : h;
+      const resized = resizeOverrides?.get(h.id) ?? h;
+      const position = dragOverrides?.get(h.id);
+      return position ? { ...resized, centerMm: position } : resized;
     });
-  }, [projection.freeHoles, freePrimitiveDragOverrides?.freeHoles]);
+  }, [
+    projection.freeHoles,
+    freePrimitiveDragOverrides?.freeHoles,
+    freePrimitiveResizeOverrides?.freeHoles,
+  ]);
 
   const renderFreePads = useMemo(() => {
-    const overrides = freePrimitiveDragOverrides?.freePads;
-    if (!overrides || overrides.size === 0) return projection.freePads;
+    const dragOverrides = freePrimitiveDragOverrides?.freePads;
+    const resizeOverrides = freePrimitiveResizeOverrides?.freePads;
+    if (
+      (!dragOverrides || dragOverrides.size === 0) &&
+      (!resizeOverrides || resizeOverrides.size === 0)
+    )
+      return projection.freePads;
     return projection.freePads.map((p) => {
-      const override = overrides.get(p.id);
-      return override ? { ...p, centerMm: override } : p;
+      const resized = resizeOverrides?.get(p.id) ?? p;
+      const position = dragOverrides?.get(p.id);
+      return position ? { ...resized, centerMm: position } : resized;
     });
-  }, [projection.freePads, freePrimitiveDragOverrides?.freePads]);
+  }, [
+    projection.freePads,
+    freePrimitiveDragOverrides?.freePads,
+    freePrimitiveResizeOverrides?.freePads,
+  ]);
 
   // Overlay primitives are gated by their own layer before they reach
   // `OverlayLayer` — it renders whatever it is handed, so hiding e.g. B.SilkS
@@ -1676,15 +1751,22 @@ export function PcbScene({
       visibleLayers,
       projection.overlayTexts,
     );
-    const overrides = freePrimitiveDragOverrides?.overlayTexts;
-    if (!overrides || overrides.size === 0) return visible;
+    const dragOverrides = freePrimitiveDragOverrides?.overlayTexts;
+    const resizeOverrides = freePrimitiveResizeOverrides?.overlayTexts;
+    if (
+      (!dragOverrides || dragOverrides.size === 0) &&
+      (!resizeOverrides || resizeOverrides.size === 0)
+    )
+      return visible;
     return visible.map((t) => {
-      const override = overrides.get(t.id);
-      return override ? { ...t, positionMm: override } : t;
+      const resized = resizeOverrides?.get(t.id) ?? t;
+      const position = dragOverrides?.get(t.id);
+      return position ? { ...resized, positionMm: position } : resized;
     });
   }, [
     projection.overlayTexts,
     freePrimitiveDragOverrides?.overlayTexts,
+    freePrimitiveResizeOverrides?.overlayTexts,
     visibleLayers,
   ]);
 
@@ -1941,14 +2023,17 @@ export function PcbScene({
         {onViewportChange && (
           <ViewportReporter onViewportChange={onViewportChange} />
         )}
-        <GridShader
-          gridSize={1}
-          majorEvery={5}
-          color="#3f4754"
-          alpha={0.22}
-          majorAlpha={0.45}
-          minSpacingPx={5}
-        />
+        {gridVisible ? (
+          <PcbAdaptiveGrid
+            outline={outlineOverride ?? projection.board.outline}
+            cutouts={projection.board.cutouts}
+            gridSize={gridSizeMm}
+            majorEvery={5}
+            coreColor={gridContrast.coreColor}
+            outlineColor={gridContrast.outlineColor}
+            minSpacingPx={5}
+          />
+        ) : null}
         <BoardFill
           projection={projection}
           visualState={visualState}
@@ -2255,6 +2340,16 @@ export function PcbScene({
           b={marqueeOverlay?.b ?? null}
           color={marqueeOverlay?.color ?? "#60a5fa"}
         />
+        {measurements.map((item) => (
+          <MeasureOverlayLayer
+            key={item.id}
+            start={item.startMm}
+            end={item.endMm}
+            showDeltas={item.showDeltas}
+            counterMirror={mirror}
+            selected={selection.measurementIds?.has(item.id) ?? false}
+          />
+        ))}
         {measurement ? (
           <MeasureOverlayLayer
             start={measurement.start}

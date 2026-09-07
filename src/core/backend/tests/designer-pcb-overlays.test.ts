@@ -326,4 +326,39 @@ describe("designer PCB overlay primitives (F5)", () => {
     if (blocked.ok) return;
     expect(blocked.code).toBe("INVALID_PCB_OVERLAY");
   });
+
+  test("measurement persists in the board projection and participates in undo", async () => {
+    isolateTestDb("measurement-persistence");
+    const { moduleRuntime } = await createRuntime();
+    const sdk = moduleRuntime
+      .getSdkRegistry()
+      .resolve<DesignerSDK>(MODULE_SDK_TOKENS.DESIGNER);
+    const design = await sdk.createDesign({ name: "Measurement" });
+
+    const add = await sdk.dispatchCommand(
+      design.id,
+      envelope(design.id, "cmd-measure", SESSION, 0, {
+        type: "pcb_add_measurement",
+        startMm: { x: 1, y: 2 },
+        endMm: { x: 4, y: 6 },
+        showDeltas: true,
+      }),
+    );
+    expect(add.ok).toBe(true);
+    if (!add.ok) return;
+    expect(add.createdEntityId).not.toBeNull();
+    expect((await sdk.getPcbProjection(design.id))?.board.measurements).toEqual([
+      {
+        id: add.createdEntityId!,
+        startMm: { x: 1, y: 2 },
+        endMm: { x: 4, y: 6 },
+        showDeltas: true,
+      },
+    ]);
+
+    expect((await sdk.undo(design.id, SESSION)).ok).toBe(true);
+    expect(
+      (await sdk.getPcbProjection(design.id))?.board.measurements ?? [],
+    ).toEqual([]);
+  });
 });

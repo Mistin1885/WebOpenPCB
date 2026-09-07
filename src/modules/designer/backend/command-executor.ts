@@ -112,6 +112,7 @@ import {
   updatePcbViewState,
   updatePcbDesignRules,
   updatePcbVisibleLayers,
+  replacePcbBoardSettings,
 } from "./pcb/pcb-store";
 import {
   planCandidatePlacements,
@@ -932,6 +933,58 @@ export function executeDesignerCommand({
       patch: command.patch,
       timestamp,
     });
+    return okResult(bumpRevision(tx, designId, revision, timestamp), null);
+  }
+
+  if (command.type === "pcb_add_measurement") {
+    if (!isFinitePoint(command.startMm) || !isFinitePoint(command.endMm)) {
+      return invalidPcbBoardSettings("measurement points must be finite");
+    }
+    if (
+      command.startMm.x === command.endMm.x &&
+      command.startMm.y === command.endMm.y
+    ) {
+      return invalidPcbBoardSettings("measurement must have a non-zero length");
+    }
+    const board = ensurePcbBoardSettings(tx, designId, timestamp);
+    const measurement = {
+      id: crypto.randomUUID(),
+      startMm: command.startMm,
+      endMm: command.endMm,
+      showDeltas: command.showDeltas ?? false,
+    };
+    replacePcbBoardSettings(
+      tx,
+      designId,
+      {
+        ...board,
+        measurements: [...(board.measurements ?? []), measurement],
+      },
+      timestamp,
+    );
+    return okResult(
+      bumpRevision(tx, designId, revision, timestamp),
+      measurement.id,
+    );
+  }
+
+  if (command.type === "pcb_delete_measurement") {
+    const board = ensurePcbBoardSettings(tx, designId, timestamp);
+    const measurements = board.measurements ?? [];
+    if (!measurements.some((item) => item.id === command.measurementId)) {
+      return invalidPcbBoardSettings("measurement not found");
+    }
+    replacePcbBoardSettings(
+      tx,
+      designId,
+      {
+        ...board,
+        measurements: measurements.filter(
+          (item) => item.id !== command.measurementId,
+        ),
+      },
+      timestamp,
+    );
     return okResult(bumpRevision(tx, designId, revision, timestamp), null);
   }
 

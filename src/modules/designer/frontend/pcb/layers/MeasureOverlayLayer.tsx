@@ -10,9 +10,11 @@ interface MeasureOverlayLayerProps {
   end: PcbPointMm;
   showDeltas: boolean;
   counterMirror?: boolean;
+  selected?: boolean;
 }
 
 const COLOR = "#38bdf8";
+const SELECTED_COLOR = "#facc15";
 const MARKER_RADIUS_MM = 0.25;
 const MARKER_THICKNESS_MM = 0.035;
 
@@ -21,6 +23,7 @@ export function MeasureOverlayLayer({
   end,
   showDeltas,
   counterMirror = false,
+  selected = false,
 }: MeasureOverlayLayerProps): ReactElement {
   const lineGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
@@ -47,13 +50,13 @@ export function MeasureOverlayLayer({
   const lineMaterial = useMemo(
     () =>
       new THREE.LineBasicMaterial({
-        color: COLOR,
+        color: selected ? SELECTED_COLOR : COLOR,
         transparent: true,
         opacity: 0.95,
         depthTest: false,
         depthWrite: false,
       }),
-    [],
+    [selected],
   );
 
   const line = useMemo(() => {
@@ -86,7 +89,7 @@ export function MeasureOverlayLayer({
           renderOrder={RENDER_ORDER.SELECTION + 1}
         >
           <meshBasicMaterial
-            color={COLOR}
+            color={selected ? SELECTED_COLOR : COLOR}
             transparent
             opacity={0.9}
             depthTest={false}
@@ -95,11 +98,14 @@ export function MeasureOverlayLayer({
           />
         </mesh>
       ))}
-      <group position={[mid.x, mid.y + 0.8, 0]} scale={[counterMirror ? -1 : 1, 1, 1]}>
+      <group
+        position={[mid.x, mid.y + 0.8, 0]}
+        scale={[counterMirror ? -1 : 1, 1, 1]}
+      >
         <EDAText
           position={[0, 0, 0]}
           fontSize={0.9}
-          color={COLOR}
+          color={selected ? SELECTED_COLOR : COLOR}
           anchorX="center"
           anchorY="middle"
         >

@@ -1,6 +1,10 @@
 import type {
   PcbPlacedPart,
   PcbPointMm,
+  PcbMeasurement,
+  PcbFreeHole,
+  PcbFreePad,
+  PcbOverlayText,
   PcbTrace,
   PcbVia,
 } from "../../../../sdks";
@@ -126,4 +130,94 @@ export function viaIntersectsRect(via: PcbVia, rect: BoundsMm): boolean {
     maxY: via.centerMm.y + r,
   };
   return aabbOverlap(b, rect);
+}
+
+function aabbForFreePad(pad: PcbFreePad): BoundsMm {
+  return {
+    minX: pad.centerMm.x - pad.widthMm / 2,
+    minY: pad.centerMm.y - pad.heightMm / 2,
+    maxX: pad.centerMm.x + pad.widthMm / 2,
+    maxY: pad.centerMm.y + pad.heightMm / 2,
+  };
+}
+
+function aabbForOverlayText(text: PcbOverlayText): BoundsMm {
+  const halfW = text.fontSizeMm * text.text.length * 0.3;
+  const halfH = text.fontSizeMm / 2;
+  return {
+    minX: text.positionMm.x - halfW,
+    minY: text.positionMm.y - halfH,
+    maxX: text.positionMm.x + halfW,
+    maxY: text.positionMm.y + halfH,
+  };
+}
+
+export function freeHoleContainedInRect(
+  hole: PcbFreeHole,
+  rect: BoundsMm,
+): boolean {
+  const r = hole.drillMm / 2;
+  return aabbContains(rect, {
+    minX: hole.centerMm.x - r,
+    minY: hole.centerMm.y - r,
+    maxX: hole.centerMm.x + r,
+    maxY: hole.centerMm.y + r,
+  });
+}
+
+export function freeHoleIntersectsRect(
+  hole: PcbFreeHole,
+  rect: BoundsMm,
+): boolean {
+  const r = hole.drillMm / 2;
+  return aabbOverlap(rect, {
+    minX: hole.centerMm.x - r,
+    minY: hole.centerMm.y - r,
+    maxX: hole.centerMm.x + r,
+    maxY: hole.centerMm.y + r,
+  });
+}
+
+export function freePadContainedInRect(
+  pad: PcbFreePad,
+  rect: BoundsMm,
+): boolean {
+  return aabbContains(rect, aabbForFreePad(pad));
+}
+export function freePadIntersectsRect(
+  pad: PcbFreePad,
+  rect: BoundsMm,
+): boolean {
+  return aabbOverlap(rect, aabbForFreePad(pad));
+}
+export function overlayTextContainedInRect(
+  text: PcbOverlayText,
+  rect: BoundsMm,
+): boolean {
+  return aabbContains(rect, aabbForOverlayText(text));
+}
+export function overlayTextIntersectsRect(
+  text: PcbOverlayText,
+  rect: BoundsMm,
+): boolean {
+  return aabbOverlap(rect, aabbForOverlayText(text));
+}
+
+/** A measurement is contained when both endpoints are in the window. */
+export function measurementContainedInRect(
+  measurement: PcbMeasurement,
+  rect: BoundsMm,
+): boolean {
+  return polylineContainedInAabb(
+    [measurement.startMm, measurement.endMm],
+    rect,
+  );
+}
+
+/** A measurement intersects when either endpoint or its line crosses the box. */
+export function measurementIntersectsRect(
+  measurement: PcbMeasurement,
+  rect: BoundsMm,
+): boolean {
+  return polylineIntersectsAabb([measurement.startMm, measurement.endMm], rect);
 }

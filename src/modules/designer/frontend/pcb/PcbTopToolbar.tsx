@@ -13,6 +13,7 @@ import {
   Network,
   Plus,
   Redo2,
+  Ruler,
   ScanSearch,
   ShieldAlert,
   Square,
@@ -419,6 +420,8 @@ function AddDropdown({
   onTogglePadMode,
   textMode,
   onToggleTextMode,
+  measureMode,
+  onToggleMeasureMode,
   commentMode,
   onToggleCommentMode,
 }: {
@@ -428,6 +431,8 @@ function AddDropdown({
   onTogglePadMode: () => void;
   textMode: boolean;
   onToggleTextMode: () => void;
+  measureMode: boolean;
+  onToggleMeasureMode: () => void;
   /** Comment tool — only offered when the caller wires it. */
   commentMode?: boolean;
   onToggleCommentMode?: () => void;
@@ -482,6 +487,18 @@ function AddDropdown({
       activeClass:
         "border-cyan-500 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
     },
+    {
+      key: "measurement",
+      label: "Measurement",
+      hotkey: "M",
+      title:
+        "Measure distance (M) — click two points to draw a labelled measurement line",
+      Icon: Ruler,
+      active: measureMode,
+      onToggle: onToggleMeasureMode,
+      activeClass:
+        "border-sky-500 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    },
     ...(onToggleCommentMode
       ? [
           {
@@ -508,9 +525,12 @@ function AddDropdown({
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={
-          activeItem ? activeItem.title : "Add hole, pad, or silkscreen text"
+          activeItem
+            ? activeItem.title
+            : "Add hole, pad, text, measurement, or comment"
         }
-        aria-pressed={Boolean(activeItem)}
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           activeItem
             ? activeItem.activeClass
@@ -530,6 +550,8 @@ function AddDropdown({
               key={it.key}
               type="button"
               title={it.title}
+              role="menuitemradio"
+              aria-checked={it.active}
               onClick={() => {
                 it.onToggle();
                 setOpen(false);
@@ -624,8 +646,9 @@ function ViewToggleDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Show/hide ratsnest, guides, and DRC overlays"
-        aria-pressed={open}
+        title="Board view and snapping options"
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={`relative inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           open
             ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
@@ -642,13 +665,17 @@ function ViewToggleDropdown({
         </span>
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-30 mt-1 min-w-[190px] overflow-hidden rounded-md border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-950">
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1 min-w-[190px] overflow-hidden rounded-md border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-950"
+        >
           {rows.map((row) => (
             <button
               key={row.key}
               type="button"
               onClick={row.onToggle}
-              aria-pressed={row.on}
+              role="menuitemcheckbox"
+              aria-checked={row.on}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <row.Icon
@@ -899,6 +926,8 @@ export function PcbTopToolbar({
           onTogglePadMode={onTogglePadMode}
           textMode={textMode}
           onToggleTextMode={onToggleTextMode}
+          measureMode={measureMode}
+          onToggleMeasureMode={onToggleMeasureMode}
           commentMode={commentMode}
           onToggleCommentMode={onToggleCommentMode}
         />

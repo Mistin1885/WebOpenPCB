@@ -131,8 +131,8 @@ function digestInput(projection: DesignerPcbProjection): unknown {
  *
  * Deliberately EXCLUDED: `viewState` (and everything in it, including the persisted
  * auto-layout config), `ratsnest` and `netNames` (derived per read, and net ids are
- * ephemeral by design), `revision`, overlay silkscreen text/shapes (cosmetic — they cannot
- * invalidate a placement or a route).
+ * ephemeral by design), `revision`, overlay silkscreen text/shapes and measurements
+ * (cosmetic — they cannot invalidate a placement or a route).
  */
 export function computeBoardContentDigest(projection: DesignerPcbProjection): string {
   return createHash("sha256").update(canonicalJson(digestInput(projection))).digest("hex");
